@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/Player.tscn" id="PackedScene_1"]
+[ext_resource type="PackedScene" path="res://scenes/Enemy.tscn" id="PackedScene_2"]
+[ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="PackedScene_3"]
+
+[node name="Main" type="Node3D"]
+
+[node name="Player" instance=ExtResource("PackedScene_1") parent="."]
+
+[node name="Enemy" instance=ExtResource("PackedScene_2") parent="."]
+translation = Vector3( 0, 0, -10 )
+
+[node name="HUD" instance=ExtResource("PackedScene_3") parent="."]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+light_energy = 2.0
+
+[node name="Ground" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("BoxShape3D_3")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("BoxMesh_3")
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_3"]
+size = Vector3( 50, 1, 50 )
+
+[sub_resource type="BoxMesh" id="BoxMesh_3"]
+size = Vector3( 50, 1, 50 )
