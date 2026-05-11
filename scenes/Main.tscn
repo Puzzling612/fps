@@ -9,7 +9,7 @@
 [node name="Player" instance=ExtResource("PackedScene_1") parent="."]
 
 [node name="Enemy" instance=ExtResource("PackedScene_2") parent="."]
-translation = Vector3( 0, 0, -10 )
+position = Vector3(0, 0, -10)
 
 [node name="HUD" instance=ExtResource("PackedScene_3") parent="."]
 

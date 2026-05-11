@@ -2,7 +2,6 @@
 
 [node name="HUD" type="CanvasLayer"]
 
-[node name="StatusLabel" type="Label" parent="HUD"]
+[node name="StatusLabel" type="Label" parent="."]
 text = "Health: 100  Ammo: 30"
-position = Vector2( 20, 20 )
-custom_colors/font_color = Color( 1, 1, 1 )
+position = Vector2(20, 20)

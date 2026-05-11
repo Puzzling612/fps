@@ -6,7 +6,7 @@ extends CharacterBody3D
 @export var mouse_sensitivity: float = 0.18
 
 @onready var camera_pivot: Node3D = $CameraPivot
-@onready var raycast: RayCast3D = $Camera/RayCast3D
+@onready var raycast: RayCast3D = $CameraPivot/Camera/RayCast3D
 var weapon: Node
 
 func _ready() -> void:

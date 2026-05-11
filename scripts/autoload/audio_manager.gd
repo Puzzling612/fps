@@ -4,9 +4,6 @@ extends Node
 @export var reload_sound: AudioStream
 @export var hit_sound: AudioStream
 
-func _ready() -> void:
-	pass
-
 func play_sound(stream: AudioStream) -> void:
 	if not stream:
 		return
@@ -15,6 +12,10 @@ func play_sound(stream: AudioStream) -> void:
 	add_child(player)
 	player.play()
 	player.connect("finished", Callable(player, "queue_free"))
+
+func play_shot() -> void:
+	play_sound(shot_sound)
+
 func play_reload() -> void:
 	play_sound(reload_sound)
 

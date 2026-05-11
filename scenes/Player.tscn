@@ -5,7 +5,7 @@
 
 [node name="Player" type="CharacterBody3D"]
 script = ExtResource("Script_1")
-translation = Vector3( 0, 1.5, 0 )
+position = Vector3(0, 1.5, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("CapsuleShape3D_1")
@@ -15,7 +15,7 @@ shape = SubResource("CapsuleShape3D_1")
 [node name="Camera" type="Camera3D" parent="CameraPivot"]
 current = true
 
-[node name="RayCast3D" type="RayCast3D" parent="Camera"]
+[node name="RayCast3D" type="RayCast3D" parent="CameraPivot/Camera"]
 enabled = true
 cast_to = Vector3( 0, 0, -1000 )
 
