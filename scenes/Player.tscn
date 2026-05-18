@@ -1,13 +1,49 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=11 format=3]
 
-[ext_resource path="res://scripts/player.gd" type="Script" id="Script_1"]
+[ext_resource path="res://scripts/player.gd" type="Script" id="Script_Player"]
+[ext_resource path="res://scripts/viewmodel.gd" type="Script" id="Script_Viewmodel"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.5
 height = 1.6
 
+[sub_resource type="StandardMaterial3D" id="Mat_GunBody"]
+albedo_color = Color(0.16, 0.16, 0.18, 1)
+metallic = 0.6
+roughness = 0.42
+
+[sub_resource type="StandardMaterial3D" id="Mat_GunDark"]
+albedo_color = Color(0.06, 0.06, 0.07, 1)
+metallic = 0.3
+roughness = 0.55
+
+[sub_resource type="StandardMaterial3D" id="Mat_GunPlastic"]
+albedo_color = Color(0.09, 0.09, 0.10, 1)
+metallic = 0.0
+roughness = 0.75
+
+[sub_resource type="BoxMesh" id="BoxMesh_Body"]
+material = SubResource("Mat_GunBody")
+size = Vector3(0.07, 0.06, 0.42)
+
+[sub_resource type="BoxMesh" id="BoxMesh_Stock"]
+material = SubResource("Mat_GunPlastic")
+size = Vector3(0.06, 0.085, 0.14)
+
+[sub_resource type="BoxMesh" id="BoxMesh_Grip"]
+material = SubResource("Mat_GunPlastic")
+size = Vector3(0.045, 0.17, 0.055)
+
+[sub_resource type="BoxMesh" id="BoxMesh_Mag"]
+material = SubResource("Mat_GunDark")
+size = Vector3(0.046, 0.13, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_Barrel"]
+material = SubResource("Mat_GunDark")
+size = Vector3(0.022, 0.022, 0.16)
+
 [node name="Player" type="CharacterBody3D"]
-script = ExtResource("Script_1")
+script = ExtResource("Script_Player")
 position = Vector3(0, 1.5, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
@@ -22,3 +58,35 @@ current = true
 [node name="RayCast3D" type="RayCast3D" parent="CameraPivot/Camera"]
 enabled = true
 target_position = Vector3(0, 0, -1000)
+
+[node name="MuzzlePoint" type="Node3D" parent="CameraPivot/Camera"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, -0.25, -0.6)
+
+[node name="MuzzleLight" type="OmniLight3D" parent="CameraPivot/Camera/MuzzlePoint"]
+light_color = Color(1, 0.85, 0.4, 1)
+light_energy = 4.0
+omni_range = 3.0
+
+[node name="Viewmodel" type="Node3D" parent="CameraPivot/Camera"]
+transform = Transform3D(0.98994, 0.0498, 0.131443, -0.0499792, 0.998751, 0.0, -0.131389, -0.006573, 0.991177, 0.32, -0.28, -0.55)
+script = ExtResource("Script_Viewmodel")
+
+[node name="Body" type="MeshInstance3D" parent="CameraPivot/Camera/Viewmodel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.02)
+mesh = SubResource("BoxMesh_Body")
+
+[node name="Stock" type="MeshInstance3D" parent="CameraPivot/Camera/Viewmodel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.24)
+mesh = SubResource("BoxMesh_Stock")
+
+[node name="Grip" type="MeshInstance3D" parent="CameraPivot/Camera/Viewmodel"]
+transform = Transform3D(1, 0, 0, 0, 0.984808, 0.173648, 0, -0.173648, 0.984808, 0, -0.115, 0.085)
+mesh = SubResource("BoxMesh_Grip")
+
+[node name="Magazine" type="MeshInstance3D" parent="CameraPivot/Camera/Viewmodel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, -0.02)
+mesh = SubResource("BoxMesh_Mag")
+
+[node name="Barrel" type="MeshInstance3D" parent="CameraPivot/Camera/Viewmodel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.005, -0.27)
+mesh = SubResource("BoxMesh_Barrel")

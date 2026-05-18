@@ -1,7 +1,226 @@
-[gd_scene load_steps=0 format=3]
+[gd_scene load_steps=4 format=3]
+
+[ext_resource path="res://scripts/hud.gd" type="Script" id="Script_HUD"]
+
+[sub_resource type="StyleBoxFlat" id="StyleHP_BG"]
+bg_color = Color(0.08, 0.02, 0.02, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0, 0, 0, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleHP_FG"]
+bg_color = Color(0.95, 0.13, 0.13, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
 
 [node name="HUD" type="CanvasLayer"]
+script = ExtResource("Script_HUD")
 
-[node name="StatusLabel" type="Label" parent="."]
-text = "Health: 100  Ammo: 30"
-position = Vector2(20, 20)
+[node name="DamageVignette" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.9, 0.05, 0.05, 0)
+mouse_filter = 2
+
+[node name="HPPanel" type="Control" parent="."]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 360.0
+offset_bottom = 100.0
+
+[node name="HPBar" type="ProgressBar" parent="HPPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 28.0
+max_value = 100.0
+value = 100.0
+show_percentage = false
+theme_override_styles/background = SubResource("StyleHP_BG")
+theme_override_styles/fill = SubResource("StyleHP_FG")
+
+[node name="HPLabel" type="Label" parent="HPPanel"]
+anchor_right = 1.0
+offset_bottom = 26.0
+text = "HP  100 / 100"
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.45, 0.45, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+
+[node name="AmmoLabel" type="Label" parent="."]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -80.0
+offset_right = -20.0
+offset_bottom = -20.0
+text = "30/30   90"
+horizontal_alignment = 2
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+
+[node name="ReloadLabel" type="Label" parent="."]
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -160.0
+offset_top = -140.0
+offset_right = 160.0
+offset_bottom = -100.0
+text = "RELOADING..."
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+
+[node name="ReloadBar" type="ProgressBar" parent="."]
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -100.0
+offset_right = 120.0
+offset_bottom = -88.0
+max_value = 1.0
+value = 0.0
+show_percentage = false
+
+[node name="ScoreLabel" type="Label" parent="."]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -240.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 50.0
+text = "Score: 0"
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+
+[node name="RoundLabel" type="Label" parent="."]
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -100.0
+offset_top = 20.0
+offset_right = 100.0
+offset_bottom = 55.0
+text = "Round 0"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+
+[node name="Crosshair" type="Control" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+mouse_filter = 2
+
+[node name="DashTop" type="ColorRect" parent="Crosshair"]
+offset_left = -1.5
+offset_top = -12.0
+offset_right = 1.5
+offset_bottom = -4.0
+color = Color(1, 1, 1, 0.9)
+mouse_filter = 2
+
+[node name="DashBottom" type="ColorRect" parent="Crosshair"]
+offset_left = -1.5
+offset_top = 4.0
+offset_right = 1.5
+offset_bottom = 12.0
+color = Color(1, 1, 1, 0.9)
+mouse_filter = 2
+
+[node name="DashLeft" type="ColorRect" parent="Crosshair"]
+offset_left = -12.0
+offset_top = -1.5
+offset_right = -4.0
+offset_bottom = 1.5
+color = Color(1, 1, 1, 0.9)
+mouse_filter = 2
+
+[node name="DashRight" type="ColorRect" parent="Crosshair"]
+offset_left = 4.0
+offset_top = -1.5
+offset_right = 12.0
+offset_bottom = 1.5
+color = Color(1, 1, 1, 0.9)
+mouse_filter = 2
+
+[node name="HitMarker" type="Label" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -16.0
+offset_top = -20.0
+offset_right = 16.0
+offset_bottom = 12.0
+text = "x"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+modulate = Color(1, 1, 1, 0)
+
+[node name="CenterMessage" type="Label" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -240.0
+offset_top = -100.0
+offset_right = 240.0
+offset_bottom = -40.0
+text = "ROUND 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 64
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+
+[node name="GameOverLabel" type="Label" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -60.0
+offset_right = 300.0
+offset_bottom = 60.0
+text = "GAME OVER"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 80
+theme_override_colors/font_color = Color(1, 0.2, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 8
+
+[node name="MessageTimer" type="Timer" parent="."]
+wait_time = 2.0
+one_shot = true

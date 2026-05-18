@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource path="res://scripts/tracer.gd" type="Script" id="Script_Tracer"]
+
+[node name="Tracer" type="Node3D"]
+script = ExtResource("Script_Tracer")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
