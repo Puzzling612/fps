@@ -47,9 +47,6 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	if Input.is_action_just_pressed("shoot"):
-		shoot()
-
 func shoot() -> void:
 	raycast.force_raycast_update()
 	var origin = raycast.global_transform.origin
