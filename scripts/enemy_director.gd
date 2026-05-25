@@ -6,15 +6,15 @@
 extends Node
 
 @export var slot_count: int = 8
-@export var slot_radius: float = 12.0
-@export var reassign_interval: float = 1.0
-@export var ladder_base: Vector3 = Vector3(-15.5, 0.0, -30.0)  # entry to ladder
+@export var slot_radius: float = 10.0
+@export var reassign_interval: float = 0.5
+@export var ladder_base: Vector3 = Vector3(-15.0, 0.5, -30.0)  # ladder approach
 @export var watchtower_top: Vector3 = Vector3(-18.0, 8.3, -30.0)
-@export var objective_reassign_interval: float = 6.0
-@export var min_enemies_before_objective: int = 3
+@export var objective_reassign_interval: float = 3.0
+@export var min_enemies_before_objective: int = 1
 
-var _reassign_timer: float = 0.5
-var _objective_timer: float = 2.0
+var _reassign_timer: float = 0.3
+var _objective_timer: float = 1.5
 var _objective_enemy: WeakRef = null
 
 func _process(delta: float) -> void:
@@ -51,11 +51,13 @@ func _reassign_slots() -> void:
 		var ang: float = TAU * float(i) / float(slot_count)
 		slots.append(player_pos + Vector3(cos(ang) * slot_radius, 0, sin(ang) * slot_radius))
 
-	# Only consider enemies that have NO active objective
+	# Only consider enemies that have NO active objective AND aren't already perched
+	# high up (watchtower occupants stay there and shoot — no need to encircle).
 	var active: Array = []
 	for e in enemies:
 		if not is_instance_valid(e): continue
 		if e.get("has_objective"): continue
+		if (e as Node3D).global_position.y > 5.0: continue
 		active.append(e)
 
 	# Greedy assignment: each slot picks the nearest unassigned enemy

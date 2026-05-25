@@ -32,7 +32,7 @@ material = SubResource("Mat_LadderWood")
 size = Vector3(0.08, 0.08, 0.7)
 
 [sub_resource type="BoxShape3D" id="BoxShape_LadderArea"]
-size = Vector3(0.7, 8.4, 1.0)
+size = Vector3(1.6, 8.4, 1.4)
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.34, 0.46, 0.68, 1)
@@ -368,26 +368,6 @@ shape = SubResource("BoxShape_WatchLeg")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Watchtower/LegD"]
 mesh = SubResource("BoxMesh_WatchLeg")
 
-[node name="RailN" type="StaticBody3D" parent="Watchtower"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.65, -2)
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Watchtower/RailN"]
-shape = SubResource("BoxShape_WatchRail")
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Watchtower/RailN"]
-mesh = SubResource("BoxMesh_WatchRail")
-
-[node name="RailS" type="StaticBody3D" parent="Watchtower"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.65, 2)
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Watchtower/RailS"]
-shape = SubResource("BoxShape_WatchRail")
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Watchtower/RailS"]
-mesh = SubResource("BoxMesh_WatchRail")
-
-[node name="RailE" type="StaticBody3D" parent="Watchtower"]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 8.65, 0)
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Watchtower/RailE"]
-shape = SubResource("BoxShape_WatchRail")
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Watchtower/RailE"]
-mesh = SubResource("BoxMesh_WatchRail")
 
 ; Watchtower spotlight (lights the platform)
 [node name="WatchSpotlight" type="SpotLight3D" parent="Watchtower"]

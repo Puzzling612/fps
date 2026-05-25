@@ -17,13 +17,13 @@ extends CharacterBody3D
 @export var aim_spread_deg: float = 4.0
 @export var strafe_change_interval_min: float = 0.8
 @export var strafe_change_interval_max: float = 1.8
-@export var jump_velocity: float = 6.5
+@export var jump_velocity: float = 7.5
 @export var gravity: float = 18.0
 @export var hp_lerp_speed: float = 110.0
 @export var slot_reach_distance: float = 2.5
 @export var evade_duration: float = 0.55
-@export var jump_cooldown: float = 0.6
-@export var ladder_climb_speed: float = 4.5
+@export var jump_cooldown: float = 0.35
+@export var ladder_climb_speed: float = 5.0
 
 # ─── State machine ───────────────────────────────────────────
 enum State { APPROACH, ENGAGE, EVADE, GOTO_OBJECTIVE }
@@ -152,9 +152,11 @@ func _physics_process(delta: float) -> void:
 	var distance_p: float = to_player.length()
 	var forward_to_player: Vector3 = to_player.normalized() if distance_p > 0.001 else -global_transform.basis.z
 
-	# Always face the player (yaw only)
-	if forward_to_player.length() > 0.01:
-		look_at(global_position + Vector3(forward_to_player.x, 0, forward_to_player.z), Vector3.UP)
+	# Always face the player (yaw only) — even when standing still or in evade
+	var face_dir: Vector3 = (player as Node3D).global_position - global_position
+	face_dir.y = 0.0
+	if face_dir.length() > 0.05:
+		look_at(global_position + face_dir.normalized(), Vector3.UP)
 
 	var desired: Vector3 = _compute_desired_movement(forward_to_player, distance_p, delta)
 	velocity.x = desired.x
@@ -189,8 +191,11 @@ func _update_state(player: Node) -> void:
 	if has_objective:
 		state = State.GOTO_OBJECTIVE
 		return
-	# Decide between APPROACH and ENGAGE based on slot proximity + LoS
 	var distance_p: float = ((player as Node3D).global_position - global_position).length()
+	# Perched up high (watchtower): hold position and engage; no need to chase.
+	if global_position.y > 5.0 and distance_p <= attack_range and _has_line_of_sight(player):
+		state = State.ENGAGE
+		return
 	var at_slot := slot_position != NO_TARGET and \
 		Vector2(slot_position.x - global_position.x, slot_position.z - global_position.z).length() < slot_reach_distance
 	if at_slot and distance_p <= attack_range and _has_line_of_sight(player):
@@ -239,16 +244,16 @@ func _should_jump() -> bool:
 	forward = forward.normalized()
 	var space := get_world_3d().direct_space_state
 
-	# Wall in front at knee height?
-	var low_from := global_position + Vector3(0, 0.3, 0)
-	var low_to := low_from + forward * 1.0
+	# Wall in front at knee height (anything blocking forward motion)
+	var low_from: Vector3 = global_position + Vector3(0, 0.35, 0)
+	var low_to: Vector3 = low_from + forward * 1.1
 	var q1 := PhysicsRayQueryParameters3D.create(low_from, low_to)
 	q1.exclude = [get_rid()]
 	if space.intersect_ray(q1).is_empty():
 		return false
-	# Top must be reachable (no wall higher than ~1.5m)
-	var high_from := global_position + Vector3(0, 1.75, 0)
-	var high_to := high_from + forward * 1.0
+	# Top must be reachable (no wall higher than ~2.1m)
+	var high_from: Vector3 = global_position + Vector3(0, 2.1, 0)
+	var high_to: Vector3 = high_from + forward * 1.1
 	var q2 := PhysicsRayQueryParameters3D.create(high_from, high_to)
 	q2.exclude = [get_rid()]
 	if not space.intersect_ray(q2).is_empty():
