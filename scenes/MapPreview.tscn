@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource path="res://scripts/preview_capture.gd" type="Script" id="Capture_Script"]
+[ext_resource path="res://scenes/Main.tscn" type="PackedScene" id="Main_Scene"]
+
+[node name="MapPreview" type="Node3D"]
+script = ExtResource("Capture_Script")
+look_at_target = Vector3(-15.95, 4, -30)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 5, -30)
+fov = 55.0
+current = true
+
+[node name="Main" parent="." instance=ExtResource("Main_Scene")]

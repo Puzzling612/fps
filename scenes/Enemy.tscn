@@ -1,10 +1,14 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource path="res://scripts/enemy.gd" type="Script" id="Script_3"]
+[ext_resource path="res://assets/enemy_model.glb" type="PackedScene" id="Model_GLB"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_Enemy"]
 radius = 0.5
 height = 1.6
+
+[sub_resource type="SphereShape3D" id="SphereShape_Head"]
+radius = 0.22
 
 [sub_resource type="StandardMaterial3D" id="Mat_Enemy"]
 albedo_color = Color(0.85, 0.18, 0.18, 1)
@@ -40,8 +44,14 @@ script = ExtResource("Script_3")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("CapsuleShape_Enemy")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-mesh = SubResource("CapsuleMesh_Enemy")
+[node name="Model" parent="." instance=ExtResource("Model_GLB")]
+transform = Transform3D(0.842, 0, 0, 0, 0.842, 0, 0, 0, 0.842, 0, -0.8, 0)
+
+[node name="HeadArea" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.72, 0)
+
+[node name="HeadCollision" type="CollisionShape3D" parent="HeadArea"]
+shape = SubResource("SphereShape_Head")
 
 [node name="HPBar" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)

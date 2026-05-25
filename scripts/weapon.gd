@@ -48,11 +48,17 @@ func try_fire(origin: Vector3, direction: Vector3) -> void:
 	if result:
 		hit_point = result.position
 		var collider = result.collider
-		if collider and collider.has_method("take_damage"):
-			# Headshot detection: top hemisphere of capsule (local y > 0.3)
-			var local_y = result.position.y - collider.global_position.y
-			is_headshot = local_y > 0.3
-			collider.take_damage(damage, is_headshot)
+
+		# Check if we hit a HeadArea (headshot)
+		if collider and collider.name == "HeadArea":
+			var enemy = collider.get_parent()
+			if enemy and enemy.has_method("take_damage"):
+				is_headshot = true
+				enemy.take_damage(damage, is_headshot)
+				hit_enemy = true
+		# Otherwise check for body hit
+		elif collider and collider.has_method("take_damage"):
+			collider.take_damage(damage, false)
 			hit_enemy = true
 	GameManager.weapon_fired.emit(origin, hit_point, hit_enemy, is_headshot)
 	AudioManager.play_shot()

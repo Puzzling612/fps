@@ -2,13 +2,23 @@ extends CharacterBody3D
 
 @export var speed: float = 6.0
 @export var sprint_multiplier: float = 1.7
-@export var jump_velocity: float = 4.5
+@export var jump_velocity: float = 7.2
 @export var gravity: float = 18.0
 @export var mouse_sensitivity: float = 0.18
 @export var max_health: int = 100
 @export var fov_default: float = 75.0
 @export var fov_sprint: float = 86.0
 @export var fov_lerp_speed: float = 8.0
+@export var ladder_climb_speed: float = 4.5
+
+var _ladder_count: int = 0   # how many ladder areas the player is touching
+var on_ladder: bool:
+	get: return _ladder_count > 0
+
+func enter_ladder() -> void:
+	_ladder_count += 1
+func exit_ladder() -> void:
+	_ladder_count = max(0, _ladder_count - 1)
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera: Camera3D = $CameraPivot/Camera
@@ -101,7 +111,14 @@ func _physics_process(delta: float) -> void:
 	velocity.x = target_velocity.x
 	velocity.z = target_velocity.z
 
-	if not is_on_floor():
+	if on_ladder:
+		# Ladder climb: hold space to go up, release to cling (no gravity).
+		# Walking off the ladder area drops the player normally.
+		if Input.is_action_pressed("jump"):
+			velocity.y = ladder_climb_speed
+		else:
+			velocity.y = 0.0
+	elif not is_on_floor():
 		velocity.y -= gravity * delta
 	elif Input.is_action_just_pressed("jump"):
 		velocity.y = jump_velocity

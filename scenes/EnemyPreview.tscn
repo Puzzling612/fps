@@ -1,0 +1,28 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource path="res://scenes/Enemy.tscn" type="PackedScene" id="Enemy_Scene"]
+[ext_resource path="res://scripts/preview_capture.gd" type="Script" id="Capture_Script"]
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 2
+background_color = Color(0.12, 0.12, 0.18, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.7, 0.7, 0.8, 1)
+ambient_light_energy = 0.7
+
+[node name="PreviewScene" type="Node3D"]
+script = ExtResource("Capture_Script")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env_1")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.94, 0.34, 0, -0.34, 0.94, 0, 0.4, 3.0)
+fov = 50.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.85, -0.35, 0.38, 0, 0.73, 0.68, -0.52, -0.58, 0.62, 0, 3, 0)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Model" parent="." instance=ExtResource("Enemy_Scene")]
