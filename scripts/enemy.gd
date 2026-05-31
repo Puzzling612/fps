@@ -10,7 +10,7 @@ extends CharacterBody3D
 @export var strafe_speed: float = 3.0
 @export var attack_damage: int = 8
 @export var attack_interval: float = 0.95
-@export var attack_range: float = 28.0
+@export var attack_range: float = 70.0
 @export var preferred_distance: float = 11.0
 @export var min_distance: float = 6.0
 @export var distance_tolerance: float = 1.5
@@ -481,7 +481,8 @@ func _shoot_at(player: Node) -> void:
 	if not r.is_empty():
 		hit_point = r.position
 		if r.collider == player and player.has_method("take_damage"):
-			player.take_damage(attack_damage)
+			var dmg := int(round(attack_damage * WaveBalance.falloff(from.distance_to(target))))
+			player.take_damage(dmg)
 	GameManager.weapon_fired.emit(from, hit_point, false, false)
 
 func take_damage(amount: int, is_headshot: bool = false) -> void:
@@ -497,4 +498,5 @@ func take_damage(amount: int, is_headshot: bool = false) -> void:
 		var gained = score_value + (headshot_score_bonus if is_headshot else 0)
 		GameManager.add_score(gained)
 		get_tree().call_group("enemy_spawner", "_on_enemy_died")
+		get_tree().call_group("ai_director", "report_kill")
 		queue_free()

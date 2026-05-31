@@ -31,8 +31,43 @@ var current_profile: PlayerProfile = PlayerProfile.new()
 var shared_hot_zones: Array[Vector3] = []
 var shared_predicted_pos: Vector3 = Vector3.ZERO
 
+# ─── Dynamic Difficulty Adjustment (DDA) ─────────────────────
+# Quantitative knob D ∈ [0.75, 1.30]; scales enemy dmg/accuracy/spawn rate.
+var difficulty: float = 1.0
+var _hp_accum: float = 0.0
+var _hp_samples: int = 0
+var _kills_this_wave: int = 0
+var _wave_time: float = 0.0
+
 func _ready() -> void:
 	add_to_group("ai_director")
+	if not GameManager.round_started.is_connected(_on_round_started):
+		GameManager.round_started.connect(_on_round_started)
+
+# Called by enemies on death so DDA can gauge kill speed.
+func report_kill() -> void:
+	_kills_this_wave += 1
+
+func _on_round_started(_n: int) -> void:
+	# A new wave begins → evaluate performance of the wave that just ended.
+	if _hp_samples > 0:
+		_recompute_difficulty()
+	_hp_accum = 0.0
+	_hp_samples = 0
+	_kills_this_wave = 0
+	_wave_time = 0.0
+
+func _recompute_difficulty() -> void:
+	var avg_hp := _hp_accum / float(max(1, _hp_samples))
+	var kill_speed := clampf(float(_kills_this_wave) / max(1.0, _wave_time) / 1.5, 0.0, 1.0)
+	var hs: float = profiler.memory.blended().headshot_ratio
+	var perf := 0.5 * avg_hp + 0.3 * kill_speed + 0.2 * hs
+	var c: float = profiler.memory.total.confidence()   # soften early adjustments
+	if perf > 0.65:
+		difficulty += 0.05 * c          # too easy → tighten (gated by confidence)
+	elif perf < 0.45:
+		difficulty -= 0.08              # too hard → ease (protect beginners, ungated)
+	difficulty = clampf(difficulty, 0.75, 1.30)
 
 func _setup_profiler_if_needed() -> void:
 	if _profiler_setup_done:
@@ -50,7 +85,14 @@ func _process(delta: float) -> void:
 	if GameManager.is_game_over:
 		return
 
-	# ── Profiler tick (observation only in Step 1) ──
+	# ── DDA: accumulate player-performance samples ──
+	_wave_time += delta
+	var pl = GameManager.player
+	if is_instance_valid(pl) and pl.get("max_health") != null and int(pl.max_health) > 0:
+		_hp_accum += float(pl.current_health) / float(pl.max_health)
+		_hp_samples += 1
+
+	# ── Profiler tick (observation + shared readouts) ──
 	_setup_profiler_if_needed()
 	_profiler_timer -= delta
 	if _profiler_timer <= 0.0 and profiler.is_ready():

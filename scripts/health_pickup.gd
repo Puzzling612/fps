@@ -27,6 +27,7 @@ func _on_body_entered(body: Node) -> void:
 		return
 	if body == GameManager.player and body.has_method("heal"):
 		if body.current_health < body.max_health:
-			body.heal(heal_amount)
+			var amt := WaveBalance.heal_amount(max(1, GameManager.current_round))
+			body.heal(amt)
 			_collected = true
 			queue_free()

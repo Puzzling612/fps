@@ -68,6 +68,19 @@ func _spawn_one() -> void:
 			best_dist = d
 
 	var enemy = enemy_scene.instantiate()
+
+	# ── Wave-scaled balance + DDA injection ──
+	var w: int = max(1, GameManager.current_round)
+	var d: float = 1.0
+	var dirs := get_tree().get_nodes_in_group("ai_director")
+	if not dirs.is_empty() and dirs[0].get("difficulty") != null:
+		d = float(dirs[0].difficulty)
+	enemy.max_health         = WaveBalance.enemy_hp(w)
+	enemy.attack_damage      = int(round(WaveBalance.enemy_dmg(w) * d))
+	enemy.attack_interval    = WaveBalance.enemy_interval(w)
+	enemy.aim_spread_deg     = WaveBalance.enemy_spread(w) / sqrt(d)
+	enemy.headshot_multiplier = WaveBalance.headshot_mult(w)
+
 	get_tree().current_scene.add_child(enemy)
 	enemy.global_position = best.global_position + Vector3(0, 1.0, 0)
 	enemies_remaining_in_round -= 1
