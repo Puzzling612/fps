@@ -13,13 +13,60 @@ extends Node
 @export var objective_reassign_interval: float = 3.0
 @export var min_enemies_before_objective: int = 1
 
+@export var profiler_tick_interval: float = 0.2
+@export var debug_profile_log: bool = false
+
 var _reassign_timer: float = 0.3
 var _objective_timer: float = 1.5
 var _objective_enemy: WeakRef = null
 
+# ─── Adaptive AI: shared player observation ──────────────────
+var profiler := PlayerProfiler.new()
+var _profiler_timer: float = 0.0
+var _profiler_setup_done: bool = false
+var _debug_log_timer: float = 0.0
+
+# Shared tactical readouts (refreshed each profiler tick, read by all enemies)
+var current_profile: PlayerProfile = PlayerProfile.new()
+var shared_hot_zones: Array[Vector3] = []
+var shared_predicted_pos: Vector3 = Vector3.ZERO
+
+func _ready() -> void:
+	add_to_group("ai_director")
+
+func _setup_profiler_if_needed() -> void:
+	if _profiler_setup_done:
+		return
+	var player = GameManager.player
+	if not is_instance_valid(player):
+		return
+	var max_spd: float = 10.0
+	if player.get("speed") != null:
+		max_spd = float(player.speed) * float(player.get("sprint_multiplier") if player.get("sprint_multiplier") != null else 1.0)
+	profiler.setup(player, max_spd)
+	_profiler_setup_done = true
+
 func _process(delta: float) -> void:
 	if GameManager.is_game_over:
 		return
+
+	# ── Profiler tick (observation only in Step 1) ──
+	_setup_profiler_if_needed()
+	_profiler_timer -= delta
+	if _profiler_timer <= 0.0 and profiler.is_ready():
+		var dt := profiler_tick_interval
+		_profiler_timer = profiler_tick_interval
+		profiler.observe(dt)
+		# Refresh shared tactical readouts for the squad
+		current_profile = profiler.memory.blended()
+		shared_hot_zones = profiler.top_hot_zones(3)
+		shared_predicted_pos = profiler.predict_next_position()
+		if debug_profile_log:
+			_debug_log_timer -= dt
+			if _debug_log_timer <= 0.0:
+				_debug_log_timer = 2.0
+				print("[Profiler] ", profiler.debug_snapshot())
+
 	_reassign_timer -= delta
 	_objective_timer -= delta
 	if _reassign_timer <= 0.0:

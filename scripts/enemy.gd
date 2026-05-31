@@ -26,7 +26,7 @@ extends CharacterBody3D
 @export var ladder_climb_speed: float = 5.0
 
 # ─── State machine ───────────────────────────────────────────
-enum State { APPROACH, ENGAGE, EVADE, GOTO_OBJECTIVE }
+enum State { APPROACH, ENGAGE, EVADE, GOTO_OBJECTIVE, COMBAT }
 var state: State = State.APPROACH
 
 var health: int
@@ -38,6 +38,17 @@ var _displayed_hp: float
 var jump_timer: float = 0.0
 var evade_timer: float = 0.0
 var evade_dir: int = 1
+
+# Utility AI (Step 2)
+@export var action_reeval_interval: float = 0.35
+var combat_action: String = "engage"
+var action_timer: float = 0.0
+var cover_target: Vector3 = Vector3(1.0e30, 0, 0)
+var _director: Node = null
+
+# Behavior Tree (Step 3) — decision layer; movement stays in _physics_process
+var _bt: BT.BTNode = null
+var _bt_player: Node = null
 
 # Director-assigned data
 const NO_TARGET := Vector3(1.0e30, 0.0, 0.0)
@@ -64,6 +75,7 @@ func exit_ladder() -> void:
 @onready var hp_sprite: Sprite3D = $HPBar/Sprite3D
 @onready var hp_subviewport: SubViewport = $HPBar/SubViewport
 @onready var hp_progress: ProgressBar = $HPBar/SubViewport/ProgressBar
+@onready var nav_agent: NavigationAgent3D = $NavAgent
 
 var _flash_material: StandardMaterial3D
 var _model_meshes: Array[MeshInstance3D] = []
@@ -75,6 +87,7 @@ func _ready() -> void:
 	_displayed_hp = float(max_health)
 	strafe_dir = 1 if randf() < 0.5 else -1
 	strafe_timer = randf_range(strafe_change_interval_min, strafe_change_interval_max)
+	_build_behavior_tree()
 
 	_flash_material = StandardMaterial3D.new()
 	_flash_material.albedo_color = Color(1, 1, 1, 1)
@@ -137,6 +150,7 @@ func _physics_process(delta: float) -> void:
 	if attack_cooldown > 0.0: attack_cooldown -= delta
 	if jump_timer > 0.0:     jump_timer -= delta
 	if evade_timer > 0.0:    evade_timer -= delta
+	if action_timer > 0.0:   action_timer -= delta
 
 	var player = GameManager.player
 	if not is_instance_valid(player) or GameManager.is_game_over:
@@ -162,8 +176,8 @@ func _physics_process(delta: float) -> void:
 	velocity.x = desired.x
 	velocity.z = desired.z
 
-	# Attack while engaging
-	if state == State.ENGAGE and attack_cooldown <= 0.0 and distance_p <= attack_range:
+	# Attack when in range and LOS — any state except climbing to objective
+	if state != State.GOTO_OBJECTIVE and attack_cooldown <= 0.0 and distance_p <= attack_range:
 		if _has_line_of_sight(player):
 			_shoot_at(player)
 			attack_cooldown = attack_interval
@@ -184,24 +198,120 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 # ─── State logic ─────────────────────────────────────────────
+func _get_profile() -> PlayerProfile:
+	if _director == null or not is_instance_valid(_director):
+		var ds := get_tree().get_nodes_in_group("ai_director")
+		_director = ds[0] if ds.size() > 0 else null
+	if _director and is_instance_valid(_director):
+		return _director.current_profile
+	return null
+
 func _update_state(player: Node) -> void:
-	if evade_timer > 0.0:
-		state = State.EVADE
-		return
-	if has_objective:
-		state = State.GOTO_OBJECTIVE
-		return
-	var distance_p: float = ((player as Node3D).global_position - global_position).length()
-	# Perched up high (watchtower): hold position and engage; no need to chase.
-	if global_position.y > 5.0 and distance_p <= attack_range and _has_line_of_sight(player):
-		state = State.ENGAGE
-		return
-	var at_slot := slot_position != NO_TARGET and \
-		Vector2(slot_position.x - global_position.x, slot_position.z - global_position.z).length() < slot_reach_distance
-	if at_slot and distance_p <= attack_range and _has_line_of_sight(player):
-		state = State.ENGAGE
-	else:
-		state = State.APPROACH
+	# The Behavior Tree is the decision layer: it sets `state` / `combat_action`.
+	# Movement execution stays in _physics_process / _compute_desired_movement.
+	_bt_player = player
+	if _bt != null:
+		_bt.tick(self)
+
+# ─── Behavior Tree construction ──────────────────────────────
+#   Root (Selector)
+#   ├── [Seq] evading      → EVADE
+#   ├── [Seq] has objective→ GOTO_OBJECTIVE (climb watchtower)
+#   ├── [Seq] perched high → ENGAGE (hold & shoot)
+#   └── Combat (Utility-driven action selection) — always succeeds
+func _build_behavior_tree() -> void:
+	_bt = BT.Selector.new([
+		BT.Sequence.new([
+			BT.Condition.new(_bt_is_evading),
+			BT.Action.new(_bt_set_evade),
+		]),
+		BT.Sequence.new([
+			BT.Condition.new(_bt_has_objective),
+			BT.Action.new(_bt_set_objective),
+		]),
+		BT.Sequence.new([
+			BT.Condition.new(_bt_is_perched),
+			BT.Action.new(_bt_set_perched_engage),
+		]),
+		BT.Action.new(_bt_combat),
+	])
+
+func _bt_is_evading(_a) -> bool:
+	return evade_timer > 0.0
+
+func _bt_set_evade(_a) -> int:
+	state = State.EVADE
+	return BT.SUCCESS
+
+func _bt_has_objective(_a) -> bool:
+	return has_objective
+
+func _bt_set_objective(_a) -> int:
+	state = State.GOTO_OBJECTIVE
+	return BT.SUCCESS
+
+func _bt_is_perched(_a) -> bool:
+	if global_position.y <= 5.0:
+		return false
+	var d: float = ((_bt_player as Node3D).global_position - global_position).length()
+	return d <= attack_range and _has_line_of_sight(_bt_player)
+
+func _bt_set_perched_engage(_a) -> int:
+	state = State.ENGAGE
+	return BT.SUCCESS
+
+# Utility-driven combat node: re-evaluates the chosen action periodically.
+func _bt_combat(_a) -> int:
+	state = State.COMBAT
+	if action_timer <= 0.0:
+		action_timer = action_reeval_interval
+		var player := _bt_player
+		var distance_p: float = ((player as Node3D).global_position - global_position).length()
+		var profile := _get_profile()
+		if profile == null:
+			profile = PlayerProfile.new()
+		var has_los := _has_line_of_sight(player)
+		var ctx := {
+			"distance": distance_p,
+			"health_ratio": float(health) / float(max_health),
+			"has_los": has_los,
+			"in_cover": cover_target.x < 1.0e29 and global_position.distance_to(cover_target) < 1.5,
+			"has_flank_slot": slot_position != NO_TARGET,
+			"preferred_distance": preferred_distance,
+			"min_distance": min_distance,
+		}
+		var new_action := UtilityScorer.pick_action(ctx, profile)
+		if new_action != combat_action:
+			combat_action = new_action
+			if combat_action == UtilityScorer.COVER or combat_action == UtilityScorer.RETREAT:
+				cover_target = _compute_cover_target((player as Node3D).global_position)
+	return BT.SUCCESS
+
+func _compute_cover_target(player_pos: Vector3) -> Vector3:
+	# Sample directions around the enemy; pick the nearest standing point whose
+	# line to the player is blocked by geometry (true cover). Fallback: back off.
+	var space := get_world_3d().direct_space_state
+	var best := Vector3(1.0e30, 0, 0)
+	var best_d := INF
+	for i in 8:
+		var ang := TAU * float(i) / 8.0
+		var cand := global_position + Vector3(cos(ang), 0, sin(ang)) * 3.5
+		var eye := cand + Vector3(0, 1.0, 0)
+		var q := PhysicsRayQueryParameters3D.create(eye, player_pos + Vector3(0, 1.0, 0))
+		q.exclude = [get_rid()]
+		var r := space.intersect_ray(q)
+		if not r.is_empty() and r.collider != _director:  # LOS blocked → cover
+			var d := global_position.distance_to(cand)
+			if d < best_d:
+				best_d = d
+				best = cand
+	if best.x > 1.0e29:
+		# No cover found: retreat directly away from the player
+		var away := (global_position - player_pos)
+		away.y = 0
+		if away.length() > 0.01:
+			best = global_position + away.normalized() * 4.0
+	return best
 
 func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, delta: float) -> Vector3:
 	match state:
@@ -213,28 +323,107 @@ func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, de
 			to_obj.y = 0
 			if to_obj.length() < 0.5:
 				return Vector3.ZERO
-			return to_obj.normalized() * sprint_speed
+			return _nav_dir(objective_position, sprint_speed)
 		State.APPROACH:
+			if slot_position != NO_TARGET:
+				var spd: float = sprint_speed if role == "flank" else move_speed
+				return _nav_dir(slot_position, spd)
+			return _nav_dir(global_position + forward_to_player * distance_p, move_speed)
+		State.ENGAGE:
+			# Perched on watchtower — stay still and shoot
+			if global_position.y > 5.0:
+				return Vector3.ZERO
+			return _engage_orbit(forward_to_player, distance_p, delta)
+		State.COMBAT:
+			return _combat_movement(forward_to_player, distance_p, delta)
+	return Vector3.ZERO
+
+# Existing orbit/strafe behaviour, reused by ENGAGE and the STRAFE action.
+func _engage_orbit(forward_to_player: Vector3, distance_p: float, delta: float) -> Vector3:
+	strafe_timer -= delta
+	if strafe_timer <= 0.0:
+		strafe_dir = -strafe_dir
+		strafe_timer = randf_range(strafe_change_interval_min, strafe_change_interval_max)
+	var right2 := Vector3(forward_to_player.z, 0, -forward_to_player.x)
+	var radial: Vector3 = Vector3.ZERO
+	if distance_p > preferred_distance + distance_tolerance:
+		radial = forward_to_player * (move_speed * 0.5)
+	elif distance_p < min_distance:
+		radial = -forward_to_player * (move_speed * 0.5)
+	return right2 * strafe_speed * float(strafe_dir) + radial
+
+# Maps the utility-selected action to actual movement.
+func _combat_movement(forward_to_player: Vector3, distance_p: float, delta: float) -> Vector3:
+	var player_pos := global_position + forward_to_player * distance_p
+	match combat_action:
+		UtilityScorer.PUSH:
+			return _nav_dir(player_pos, sprint_speed)
+		UtilityScorer.RETREAT:
+			if cover_target.x < 1.0e29 and global_position.distance_to(cover_target) > 0.6:
+				return _nav_dir(cover_target, sprint_speed)
+			return -forward_to_player * sprint_speed
+		UtilityScorer.COVER:
+			if cover_target.x < 1.0e29 and global_position.distance_to(cover_target) > 0.6:
+				return _nav_dir(cover_target, move_speed)
+			return _engage_orbit(forward_to_player, distance_p, delta)
+		UtilityScorer.FLANK:
 			if slot_position != NO_TARGET:
 				var to_slot := slot_position - global_position
 				to_slot.y = 0
-				if to_slot.length() > 0.1:
-					var spd: float = sprint_speed if role == "flank" else move_speed
-					return to_slot.normalized() * spd
-			return forward_to_player * move_speed
-		State.ENGAGE:
-			strafe_timer -= delta
-			if strafe_timer <= 0.0:
-				strafe_dir = -strafe_dir
-				strafe_timer = randf_range(strafe_change_interval_min, strafe_change_interval_max)
-			var right2 := Vector3(forward_to_player.z, 0, -forward_to_player.x)
+				if to_slot.length() > slot_reach_distance:
+					return _nav_dir(slot_position, sprint_speed)
+			return _engage_orbit(forward_to_player, distance_p, delta)
+		UtilityScorer.ENGAGE:
+			var slot_mv := _slot_approach()
+			if slot_mv != Vector3.ZERO:
+				return slot_mv
+			# Hold preferred range, minimal strafe
 			var radial: Vector3 = Vector3.ZERO
 			if distance_p > preferred_distance + distance_tolerance:
-				radial = forward_to_player * (move_speed * 0.5)
+				radial = forward_to_player * move_speed
 			elif distance_p < min_distance:
-				radial = -forward_to_player * (move_speed * 0.5)
-			return right2 * strafe_speed * float(strafe_dir) + radial
+				radial = -forward_to_player * move_speed
+			return radial
+		_:  # STRAFE (default)
+			var slot_mv2 := _slot_approach()
+			if slot_mv2 != Vector3.ZERO:
+				return slot_mv2
+			return _engage_orbit(forward_to_player, distance_p, delta)
+
+# If a director slot is assigned and we're far from it, move there to keep the
+# encirclement; returns ZERO when already in position (let orbit/engage run).
+func _slot_approach() -> Vector3:
+	if slot_position == NO_TARGET:
+		return Vector3.ZERO
+	var to_slot := slot_position - global_position
+	to_slot.y = 0
+	if to_slot.length() > slot_reach_distance * 1.5:
+		var spd: float = sprint_speed if role == "flank" else move_speed
+		return _nav_dir(slot_position, spd)
 	return Vector3.ZERO
+
+# ─── NavMesh steering ────────────────────────────────────────
+# Returns a horizontal velocity that follows the NavMesh path toward `dest`.
+# Falls back to direct steering when no path is available (e.g. before the
+# NavMesh finishes baking, or the agent/target is briefly off-mesh).
+func _nav_dir(dest: Vector3, speed: float) -> Vector3:
+	if nav_agent == null:
+		return _direct_dir(dest, speed)
+	nav_agent.target_position = dest
+	var next: Vector3 = nav_agent.get_next_path_position()
+	var d: Vector3 = next - global_position
+	d.y = 0.0
+	if d.length() < 0.05:
+		# No usable path step (not baked yet / arrived) → steer directly.
+		return _direct_dir(dest, speed)
+	return d.normalized() * speed
+
+func _direct_dir(dest: Vector3, speed: float) -> Vector3:
+	var d: Vector3 = dest - global_position
+	d.y = 0.0
+	if d.length() < 0.1:
+		return Vector3.ZERO
+	return d.normalized() * speed
 
 # ─── Movement helpers ────────────────────────────────────────
 func _should_jump() -> bool:

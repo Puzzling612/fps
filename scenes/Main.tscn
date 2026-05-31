@@ -1,4 +1,4 @@
-[gd_scene load_steps=55 format=3]
+[gd_scene load_steps=57 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/Player.tscn" id="ExtPS_Player"]
 [ext_resource type="PackedScene" path="res://scenes/Enemy.tscn" id="ExtPS_Enemy"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/enemy_director.gd" id="ExtScr_Director"]
 [ext_resource type="Script" path="res://scripts/pickup_spawner.gd" id="ExtScr_PickupSpawner"]
 [ext_resource type="Script" path="res://scripts/ladder.gd" id="ExtScr_Ladder"]
+[ext_resource type="Script" path="res://scripts/nav_baker.gd" id="ExtScr_NavBaker"]
 
 [sub_resource type="BoxShape3D" id="BoxShape_BridgePlat"]
 size = Vector3(3, 0.25, 3)
@@ -224,6 +225,16 @@ height = 1.6
 [sub_resource type="BoxShape3D" id="BoxShape_Boundary"]
 size = Vector3(100, 30, 1)
 
+[sub_resource type="NavigationMesh" id="NavMesh_Level"]
+geometry_parsed_geometry_type = 1
+geometry_collision_mask = 4294967295
+cell_size = 0.2
+cell_height = 0.2
+agent_height = 1.6
+agent_radius = 0.6
+agent_max_climb = 0.6
+agent_max_slope = 46.0
+
 ; ─────── Scene tree ───────
 [node name="Main" type="Node3D"]
 
@@ -244,16 +255,6 @@ shape = SubResource("BoxShape_Ground")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 mesh = SubResource("BoxMesh_Ground")
-
-; Central tile plaza (beige tile area)
-[node name="CenterPlaza" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -8)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="CenterPlaza"]
-shape = SubResource("BoxShape_Tile")
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="CenterPlaza"]
-mesh = SubResource("BoxMesh_Tile")
 
 ; ─────── Building (Tier 2 - existing, kept) ───────
 [node name="Building" type="Node3D" parent="."]
@@ -673,6 +674,11 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14, 3.5, -22)
 light_color = Color(1.0, 0.85, 0.6, 1)
 light_energy = 2.0
 omni_range = 16.0
+
+; ─────── Navigation (runtime-baked NavMesh) ───────
+[node name="NavRegion" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("NavMesh_Level")
+script = ExtResource("ExtScr_NavBaker")
 
 ; ─────── Tactical AI director ───────
 [node name="EnemyDirector" type="Node" parent="."]

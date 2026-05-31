@@ -10,6 +10,8 @@ extends CharacterBody3D
 @export var fov_sprint: float = 86.0
 @export var fov_lerp_speed: float = 8.0
 @export var ladder_climb_speed: float = 4.5
+@export var crouch_speed_multiplier: float = 0.45
+@export var crouch_camera_offset: float = -0.5
 
 var _ladder_count: int = 0   # how many ladder areas the player is touching
 var on_ladder: bool:
@@ -32,6 +34,8 @@ const TRACER_SCENE: PackedScene = preload("res://scenes/Tracer.tscn")
 var weapon: Node
 var current_health: int
 var _muzzle_t: float = 0.0
+var is_crouching: bool = false
+var _crouch_camera_y: float = 0.0
 
 # Screen shake state
 var _shake_strength: float = 0.0
@@ -53,6 +57,7 @@ func _ready() -> void:
 		muzzle_flash.visible = false
 	if camera:
 		_camera_base_pos = camera.position
+		_crouch_camera_y = camera_pivot.position.y
 		camera.fov = fov_default
 
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
@@ -98,8 +103,13 @@ func _physics_process(delta: float) -> void:
 	if input_dir.length() > 0.0:
 		input_dir = input_dir.normalized()
 
-	var sprinting = Input.is_action_pressed("sprint") and input_dir.z > 0.4
-	var current_speed = speed * (sprint_multiplier if sprinting else 1.0)
+	is_crouching = Input.is_action_pressed("crouch") and is_on_floor()
+	var target_pivot_y = _crouch_camera_y + (crouch_camera_offset if is_crouching else 0.0)
+	camera_pivot.position.y = lerp(camera_pivot.position.y, target_pivot_y, 0.2)
+
+	var sprinting = Input.is_action_pressed("sprint") and input_dir.z > 0.4 and not is_crouching
+	var speed_mul = crouch_speed_multiplier if is_crouching else (sprint_multiplier if sprinting else 1.0)
+	var current_speed = speed * speed_mul
 
 	if camera:
 		var target_fov = fov_sprint if sprinting else fov_default
