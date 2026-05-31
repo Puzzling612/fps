@@ -69,22 +69,44 @@ func _spawn_one() -> void:
 
 	var enemy = enemy_scene.instantiate()
 
-	# ── Wave-scaled balance + DDA injection ──
+	# ── Wave-scaled balance + DDA + type selection ──
 	var w: int = max(1, GameManager.current_round)
 	var d: float = 1.0
+	var profile = null
 	var dirs := get_tree().get_nodes_in_group("ai_director")
-	if not dirs.is_empty() and dirs[0].get("difficulty") != null:
-		d = float(dirs[0].difficulty)
-	enemy.max_health         = WaveBalance.enemy_hp(w)
-	enemy.attack_damage      = int(round(WaveBalance.enemy_dmg(w) * d))
-	enemy.attack_interval    = WaveBalance.enemy_interval(w)
-	enemy.aim_spread_deg     = WaveBalance.enemy_spread(w) / sqrt(d)
-	enemy.headshot_multiplier = WaveBalance.headshot_mult(w)
+	if not dirs.is_empty():
+		if dirs[0].get("difficulty") != null:
+			d = float(dirs[0].difficulty)
+		profile = dirs[0].get("current_profile")
+	var etype: int = _pick_enemy_type(w, profile)
+	enemy.configure(w, etype, d)
 
 	get_tree().current_scene.add_child(enemy)
 	enemy.global_position = best.global_position + Vector3(0, 1.0, 0)
 	enemies_remaining_in_round -= 1
 	alive_enemies += 1
+
+# Weighted type pick: wave-gated availability, weighted toward counters of the
+# player's learned tendencies (visible payoff of the adaptive profiler).
+func _pick_enemy_type(w: int, profile) -> int:
+	# enemy.gd EnemyType: 0 NORMAL, 1 RUSHER, 2 MARKSMAN, 3 GRENADIER
+	var weights := {0: 1.0}
+	if w >= 2: weights[1] = 0.5
+	if w >= 4: weights[2] = 0.4
+	if w >= 6: weights[3] = 0.4
+	if profile != null:
+		var c: float = profile.confidence()
+		if weights.has(1): weights[1] += profile.camp_tendency * 1.6 * c     # rushers vs campers
+		if weights.has(2): weights[2] += profile.sniper_tendency * 1.6 * c   # marksmen vs long-range
+		if weights.has(3): weights[3] += profile.cover_usage * 1.6 * c       # grenadiers vs cover-huggers
+	var total := 0.0
+	for k in weights: total += weights[k]
+	var roll := randf() * total
+	for k in weights:
+		roll -= weights[k]
+		if roll <= 0.0:
+			return k
+	return 0
 
 func _on_enemy_died() -> void:
 	alive_enemies = max(0, alive_enemies - 1)

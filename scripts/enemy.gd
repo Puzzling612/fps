@@ -25,6 +25,11 @@ extends CharacterBody3D
 @export var jump_cooldown: float = 0.35
 @export var ladder_climb_speed: float = 5.0
 
+# ─── Enemy types ─────────────────────────────────────────────
+enum EnemyType { NORMAL, RUSHER, MARKSMAN, GRENADIER }
+@export var enemy_type: EnemyType = EnemyType.NORMAL
+const GRENADE_SCENE := preload("res://scenes/Grenade.tscn")
+
 # ─── State machine ───────────────────────────────────────────
 enum State { APPROACH, ENGAGE, EVADE, GOTO_OBJECTIVE, COMBAT }
 var state: State = State.APPROACH
@@ -78,6 +83,7 @@ func exit_ladder() -> void:
 @onready var nav_agent: NavigationAgent3D = $NavAgent
 
 var _flash_material: StandardMaterial3D
+var _base_override: StandardMaterial3D = null
 var _model_meshes: Array[MeshInstance3D] = []
 
 # ─── Setup ───────────────────────────────────────────────────
@@ -97,6 +103,7 @@ func _ready() -> void:
 
 	if model:
 		_collect_meshes(model)
+	_apply_type_visuals()
 
 	if hp_sprite and hp_subviewport:
 		hp_sprite.texture = hp_subviewport.get_texture()
@@ -112,7 +119,59 @@ func _collect_meshes(node: Node) -> void:
 
 func _apply_flash(on: bool) -> void:
 	for mi in _model_meshes:
-		mi.material_override = _flash_material if on else null
+		mi.material_override = _flash_material if on else _base_override
+
+# Tint + scale the model so each type reads at a glance.
+func _apply_type_visuals() -> void:
+	var tint: Color
+	var scl := 1.0
+	match enemy_type:
+		EnemyType.RUSHER:    tint = Color(1.0, 0.55, 0.05); scl = 0.85
+		EnemyType.MARKSMAN:  tint = Color(0.15, 0.45, 1.0); scl = 1.12
+		EnemyType.GRENADIER: tint = Color(0.25, 0.8, 0.25); scl = 1.05
+		_:                   return   # NORMAL keeps the default GLB look
+	_base_override = StandardMaterial3D.new()
+	_base_override.albedo_color = tint
+	_base_override.roughness = 0.6
+	_base_override.metallic = 0.1
+	for mi in _model_meshes:
+		mi.material_override = _base_override
+	if model:
+		model.scale *= scl
+
+# ─── Configuration (called by spawner before add_child) ──────
+func configure(w: int, t: int, d: float) -> void:
+	enemy_type = t
+	max_health = WaveBalance.enemy_hp(w)
+	attack_damage = int(round(WaveBalance.enemy_dmg(w) * d))
+	attack_interval = WaveBalance.enemy_interval(w)
+	aim_spread_deg = WaveBalance.enemy_spread(w) / sqrt(d)
+	headshot_multiplier = WaveBalance.headshot_mult(w)
+	match t:
+		EnemyType.RUSHER:
+			max_health = int(max_health * 0.6)
+			move_speed *= 1.5
+			sprint_speed *= 1.45
+			preferred_distance = 2.5
+			min_distance = 1.0
+			attack_range = 14.0
+			attack_damage = int(round(attack_damage * 1.3))
+			attack_interval *= 0.7
+		EnemyType.MARKSMAN:
+			max_health = int(max_health * 0.9)
+			move_speed *= 0.9
+			preferred_distance = 24.0
+			min_distance = 14.0
+			attack_range = 90.0
+			attack_damage = int(round(attack_damage * 3.2))
+			attack_interval = maxf(2.2, attack_interval * 2.6)
+			aim_spread_deg = 0.3
+		EnemyType.GRENADIER:
+			max_health = int(max_health * 1.0)
+			preferred_distance = 16.0
+			min_distance = 10.0
+			attack_range = 40.0
+			attack_interval = maxf(2.4, attack_interval * 2.4)
 
 # ─── Director API ────────────────────────────────────────────
 func assign_slot(pos: Vector3, new_role: String) -> void:
@@ -179,7 +238,10 @@ func _physics_process(delta: float) -> void:
 	# Attack when in range and LOS — any state except climbing to objective
 	if state != State.GOTO_OBJECTIVE and attack_cooldown <= 0.0 and distance_p <= attack_range:
 		if _has_line_of_sight(player):
-			_shoot_at(player)
+			if enemy_type == EnemyType.GRENADIER:
+				_throw_grenade(player)
+			else:
+				_shoot_at(player)
 			attack_cooldown = attack_interval
 
 	# Try to jump over short obstacles while moving
@@ -484,6 +546,24 @@ func _shoot_at(player: Node) -> void:
 			var dmg := int(round(attack_damage * WaveBalance.falloff(from.distance_to(target))))
 			player.take_damage(dmg)
 	GameManager.weapon_fired.emit(from, hit_point, false, false)
+
+func _throw_grenade(player: Node) -> void:
+	var from: Vector3 = global_position + Vector3(0, 1.4, 0)
+	var target: Vector3 = (player as Node3D).global_position
+	var to: Vector3 = target - from
+	var horiz := Vector3(to.x, 0, to.z)
+	var dist := horiz.length()
+	var g := GRENADE_SCENE.instantiate()
+	get_tree().current_scene.add_child(g)
+	g.global_position = from
+	# Ballistic lob: pick a flight time scaled by distance, solve vertical speed.
+	var grav: float = g.gravity if g.get("gravity") != null else 16.0
+	var t: float = clampf(dist / 14.0, 0.5, 2.2)
+	var vy: float = (to.y + 0.5 * grav * t * t) / t
+	var vxz: Vector3 = (horiz / t) if t > 0.001 else Vector3.ZERO
+	if g.has_method("launch"):
+		g.launch(vxz + Vector3.UP * vy, t + 0.15, attack_damage)
+	GameManager.weapon_fired.emit(from, target, false, false)
 
 func take_damage(amount: int, is_headshot: bool = false) -> void:
 	var actual = int(round(float(amount) * (headshot_multiplier if is_headshot else 1.0)))

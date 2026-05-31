@@ -107,12 +107,30 @@ func _physics_process(delta: float) -> void:
 	var target_pivot_y = _crouch_camera_y + (crouch_camera_offset if is_crouching else 0.0)
 	camera_pivot.position.y = lerp(camera_pivot.position.y, target_pivot_y, 0.2)
 
-	var sprinting = Input.is_action_pressed("sprint") and input_dir.z > 0.4 and not is_crouching
+	# ── Weapon switching (number keys + scroll wheel) ──
+	if Input.is_action_just_pressed("weapon_1"): weapon.switch_to(0)
+	elif Input.is_action_just_pressed("weapon_2"): weapon.switch_to(1)
+	elif Input.is_action_just_pressed("weapon_3"): weapon.switch_to(2)
+	elif Input.is_action_just_pressed("weapon_4"): weapon.switch_to(3)
+	if Input.is_action_just_pressed("weapon_next"): weapon.cycle(1)
+	if Input.is_action_just_pressed("weapon_prev"): weapon.cycle(-1)
+
+	# ── Aim-down-sights ──
+	var want_ads = Input.is_action_pressed("aim") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	weapon.set_ads(want_ads)
+
+	var sprinting = Input.is_action_pressed("sprint") and input_dir.z > 0.4 and not is_crouching and not weapon.ads
 	var speed_mul = crouch_speed_multiplier if is_crouching else (sprint_multiplier if sprinting else 1.0)
+	if weapon.ads:
+		speed_mul *= 0.6
 	var current_speed = speed * speed_mul
 
 	if camera:
-		var target_fov = fov_sprint if sprinting else fov_default
+		var target_fov = fov_default
+		if weapon.ads:
+			target_fov = weapon.current_def().ads_fov
+		elif sprinting:
+			target_fov = fov_sprint
 		camera.fov = lerp(camera.fov, target_fov, clamp(fov_lerp_speed * delta, 0.0, 1.0))
 
 	var forward = -global_transform.basis.z
@@ -138,27 +156,28 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("shoot") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var origin = raycast.global_transform.origin
 		var direction = -raycast.global_transform.basis.z
-		weapon.try_fire(origin, direction)
+		weapon.try_fire(origin, direction, Input.is_action_just_pressed("shoot"))
 
 	if Input.is_action_just_pressed("reload"):
 		weapon.start_reload()
 
-func _on_any_weapon_fired(from: Vector3, to: Vector3, _hit_enemy: bool, is_headshot: bool) -> void:
-	var dist_from_camera = (from - raycast.global_transform.origin).length()
-	if dist_from_camera > 0.5:
-		# Enemy shot — tracer only.
-		_spawn_tracer(from, to)
-		return
-	# Player shot
-	var visual_origin = muzzle_point.global_transform.origin if muzzle_point else from
-	_spawn_tracer(visual_origin, to)
+# Called by the weapon system on the player's own shots (visuals/recoil).
+func fire_feedback(recoil_scale: float, is_headshot: bool) -> void:
 	if muzzle_flash:
 		muzzle_flash.visible = true
 		_muzzle_t = 0.04
 	if viewmodel and viewmodel.has_method("add_recoil"):
-		viewmodel.add_recoil()
+		viewmodel.add_recoil(recoil_scale)
 	if is_headshot:
 		add_screen_shake(0.07, 0.22)
+
+func _on_any_weapon_fired(from: Vector3, to: Vector3, _hit_enemy: bool, _is_headshot: bool) -> void:
+	# Player's own shots: tracers + feedback are handled by the weapon system.
+	var dist_from_camera = (from - raycast.global_transform.origin).length()
+	if dist_from_camera <= 2.0:
+		return
+	# Enemy shot — draw its tracer.
+	_spawn_tracer(from, to)
 
 func _spawn_tracer(from: Vector3, to: Vector3) -> void:
 	var t = TRACER_SCENE.instantiate()

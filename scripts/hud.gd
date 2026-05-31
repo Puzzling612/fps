@@ -43,6 +43,8 @@ func _ready() -> void:
 	GameManager.reload_finished.connect(_on_reload_finished)
 	GameManager.weapon_fired.connect(_on_weapon_fired)
 	GameManager.player_damaged.connect(_on_player_damaged)
+	GameManager.weapon_changed.connect(_on_weapon_changed)
+	GameManager.weapon_unlocked.connect(_on_weapon_unlocked)
 
 	center_message.visible = false
 	game_over_label.visible = false
@@ -104,8 +106,26 @@ func _on_hp_changed(current: int, maximum: int) -> void:
 	hp_bar.value = current
 	hp_label.text = "HP  %d / %d" % [current, maximum]
 
+var _weapon_name: String = "ASSAULT RIFLE"
+var _mag: int = 0
+var _mag_size: int = 0
+var _reserve: int = 0
+
 func _on_ammo_changed(magazine: int, magazine_size: int, reserve: int) -> void:
-	ammo_label.text = "%d/%d   %d" % [magazine, magazine_size, reserve]
+	_mag = magazine; _mag_size = magazine_size; _reserve = reserve
+	_render_ammo()
+
+func _on_weapon_changed(weapon_name: String) -> void:
+	_weapon_name = weapon_name
+	_render_ammo()
+
+func _render_ammo() -> void:
+	ammo_label.text = "%s   %d/%d   %d" % [_weapon_name, _mag, _mag_size, _reserve]
+
+func _on_weapon_unlocked(weapon_name: String) -> void:
+	center_message.text = "%s UNLOCKED" % weapon_name
+	center_message.visible = true
+	message_timer.start()
 
 func _on_reload_started(duration: float) -> void:
 	_is_reloading = true

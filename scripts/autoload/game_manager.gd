@@ -3,6 +3,8 @@ extends Node
 signal round_started(round_number: int)
 signal player_health_changed(current: int, maximum: int)
 signal ammo_changed(magazine: int, magazine_size: int, reserve: int)
+signal weapon_changed(weapon_name: String)
+signal weapon_unlocked(weapon_name: String)
 signal reload_started(duration: float)
 signal reload_finished
 signal weapon_fired(from: Vector3, to: Vector3, hit_enemy: bool, is_headshot: bool)

@@ -1,0 +1,24 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/grenade.gd" id="Scr_Grenade"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_Grenade"]
+albedo_color = Color(0.15, 0.22, 0.12, 1)
+metallic = 0.3
+roughness = 0.6
+emission_enabled = true
+emission = Color(0.4, 0.15, 0.0, 1)
+emission_energy_multiplier = 0.6
+
+[sub_resource type="SphereMesh" id="SphereMesh_Grenade"]
+material = SubResource("Mat_Grenade")
+radius = 0.12
+height = 0.24
+radial_segments = 10
+rings = 6
+
+[node name="Grenade" type="Node3D"]
+script = ExtResource("Scr_Grenade")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_Grenade")
