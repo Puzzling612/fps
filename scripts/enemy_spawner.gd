@@ -117,8 +117,8 @@ func _pick_enemy_type(w: int, profile) -> int:
 func _on_enemy_died() -> void:
 	alive_enemies = max(0, alive_enemies - 1)
 	if alive_enemies <= 0 and enemies_remaining_in_round <= 0:
-		# Final wave cleared → victory; otherwise take a break and ramp up.
-		if GameManager.current_round >= GameManager.win_wave:
+		# Final wave cleared → victory (skipped in infinite mode, which never ends).
+		if not GameManager.infinite_mode and GameManager.current_round >= GameManager.win_wave:
 			GameManager.game_win()
 			return
 		between_rounds = true

@@ -20,7 +20,8 @@ signal score_changed(value: int)
 var score: int = 0
 var current_round: int = 0
 var start_wave: int = 1
-var win_wave: int = 10          # clearing this wave wins the run
+var win_wave: int = 10          # clearing this wave wins the run (unless infinite)
+var infinite_mode: bool = false # endless: no victory, waves keep escalating
 var is_game_over: bool = false
 var is_won: bool = false
 var player: Node = null
@@ -76,10 +77,11 @@ func game_win() -> void:
 	game_won_triggered.emit()
 	get_tree().paused = true
 
-func launch_game(wave: int) -> void:
+func launch_game(wave: int, infinite: bool = false) -> void:
 	score = 0
 	start_wave = wave
 	current_round = wave - 1
+	infinite_mode = infinite
 	is_game_over = false
 	is_won = false
 	player = null
@@ -90,6 +92,7 @@ func restart_game() -> void:
 	score = 0
 	start_wave = 1
 	current_round = 0
+	infinite_mode = false
 	is_game_over = false
 	is_won = false
 	player = null

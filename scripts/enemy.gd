@@ -46,6 +46,10 @@ var jump_timer: float = 0.0
 var evade_timer: float = 0.0
 var evade_dir: int = 1
 
+# Perched-on-watchtower state: bounded left/right strafe so they never fall off.
+var perch_anchor: Vector3 = Vector3(1.0e30, 0, 0)
+@export var perch_strafe_range: float = 1.1
+
 # Utility AI (Step 2)
 @export var action_reeval_interval: float = 0.35
 var combat_action: String = "engage"
@@ -215,6 +219,11 @@ func _physics_process(delta: float) -> void:
 	if evade_timer > 0.0:    evade_timer -= delta
 	if action_timer > 0.0:   action_timer -= delta
 
+	# Forget the perch anchor once back on the ground (lets us re-anchor if we
+	# climb again later).
+	if global_position.y <= 5.0:
+		perch_anchor = Vector3(1.0e30, 0, 0)
+
 	var player = GameManager.player
 	if not is_instance_valid(player) or GameManager.is_game_over:
 		velocity.x = 0; velocity.z = 0
@@ -248,8 +257,9 @@ func _physics_process(delta: float) -> void:
 				_shoot_at(player)
 			attack_cooldown = attack_interval
 
-	# Try to jump over short obstacles while moving
-	if jump_timer <= 0.0 and is_on_floor() and Vector2(desired.x, desired.z).length() > 0.5:
+	# Try to jump over short obstacles while moving — but NEVER while perched up
+	# high (jumping there just throws them off the watchtower).
+	if jump_timer <= 0.0 and is_on_floor() and global_position.y <= 5.0 and Vector2(desired.x, desired.z).length() > 0.5:
 		if _should_jump():
 			velocity.y = jump_velocity
 			jump_timer = jump_cooldown
@@ -303,7 +313,8 @@ func _build_behavior_tree() -> void:
 	])
 
 func _bt_is_evading(_a) -> bool:
-	return evade_timer > 0.0
+	# Don't evade-dash while perched — it would run them off the platform.
+	return evade_timer > 0.0 and global_position.y <= 5.0
 
 func _bt_set_evade(_a) -> int:
 	state = State.EVADE
@@ -396,13 +407,36 @@ func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, de
 				return _nav_dir(slot_position, spd)
 			return _nav_dir(global_position + forward_to_player * distance_p, move_speed)
 		State.ENGAGE:
-			# Perched on watchtower — stay still and shoot
+			# Perched on watchtower — only strafe left/right, never advance/jump.
 			if global_position.y > 5.0:
-				return Vector3.ZERO
+				return _perched_strafe(forward_to_player, delta)
 			return _engage_orbit(forward_to_player, distance_p, delta)
 		State.COMBAT:
 			return _combat_movement(forward_to_player, distance_p, delta)
 	return Vector3.ZERO
+
+# Watchtower strafe: oscillate left/right within perch_strafe_range of the spot
+# we arrived at, so the enemy dodges but can't walk off the edge.
+func _perched_strafe(forward_to_player: Vector3, delta: float) -> Vector3:
+	if perch_anchor.x > 1.0e29:
+		perch_anchor = global_position
+	strafe_timer -= delta
+	if strafe_timer <= 0.0:
+		strafe_dir = -strafe_dir
+		strafe_timer = randf_range(strafe_change_interval_min, strafe_change_interval_max)
+	var right := Vector3(forward_to_player.z, 0, -forward_to_player.x)
+	if right.length() < 0.001:
+		return Vector3.ZERO
+	right = right.normalized()
+	# Reverse before drifting too far from the anchor along the strafe axis.
+	var off := global_position - perch_anchor
+	off.y = 0.0
+	var along := off.dot(right)
+	if along > perch_strafe_range and strafe_dir > 0:
+		strafe_dir = -1
+	elif along < -perch_strafe_range and strafe_dir < 0:
+		strafe_dir = 1
+	return right * strafe_speed * float(strafe_dir)
 
 # Existing orbit/strafe behaviour, reused by ENGAGE and the STRAFE action.
 func _engage_orbit(forward_to_player: Vector3, distance_p: float, delta: float) -> Vector3:

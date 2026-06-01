@@ -214,6 +214,13 @@ size = Vector3(0.3, 8, 0.3)
 material = SubResource("Mat_Metal")
 size = Vector3(0.3, 8, 0.3)
 
+; Building→watchtower ramp (replaces the stepping-stone bridges): rise 4m @ ~17°
+[sub_resource type="BoxShape3D" id="BoxShape_BridgeRamp"]
+size = Vector3(13.42, 0.3, 3.5)
+[sub_resource type="BoxMesh" id="BoxMesh_BridgeRamp"]
+material = SubResource("Mat_ConcreteDark")
+size = Vector3(13.42, 0.3, 3.5)
+
 [sub_resource type="BoxShape3D" id="BoxShape_WatchRail"]
 size = Vector3(4, 1.0, 0.15)
 [sub_resource type="BoxMesh" id="BoxMesh_WatchRail"]
@@ -716,29 +723,13 @@ script = ExtResource("ExtScr_Ladder")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="WatchLadder/LadderArea"]
 shape = SubResource("BoxShape_LadderArea")
 
-; ─────── Bridge platforms (3 stepping stones from building → watchtower) ───────
-[node name="Bridges" type="Node3D" parent="."]
-
-[node name="Bridge1" type="StaticBody3D" parent="Bridges"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 5.0, -24)
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Bridges/Bridge1"]
-shape = SubResource("BoxShape_BridgePlat")
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Bridges/Bridge1"]
-mesh = SubResource("BoxMesh_WatchPlatform")
-
-[node name="Bridge2" type="StaticBody3D" parent="Bridges"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 6.0, -26)
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Bridges/Bridge2"]
-shape = SubResource("BoxShape_BridgePlat")
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Bridges/Bridge2"]
-mesh = SubResource("BoxMesh_WatchPlatform")
-
-[node name="Bridge3" type="StaticBody3D" parent="Bridges"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 7.0, -28)
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Bridges/Bridge3"]
-shape = SubResource("BoxShape_BridgePlat")
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Bridges/Bridge3"]
-mesh = SubResource("BoxMesh_WatchPlatform")
+; ─────── Building → watchtower ramp (replaces the stepping-stone bridges) ───────
+[node name="BridgeRamp" type="StaticBody3D" parent="."]
+transform = Transform3D(-0.7454, 0.2328, -0.6247, 0.2981, 0.9546, 0, -0.5963, 0.1862, 0.7809, -11, 6.15, -25)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BridgeRamp"]
+shape = SubResource("BoxShape_BridgeRamp")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BridgeRamp"]
+mesh = SubResource("BoxMesh_BridgeRamp")
 
 ; ─────── L-shape cover walls (extra ground cover) ───────
 [node name="Cover" type="Node3D" parent="."]

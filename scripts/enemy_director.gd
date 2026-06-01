@@ -177,16 +177,25 @@ func _try_assign_objective() -> void:
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	if enemies.size() < min_enemies_before_objective:
 		return
-	# Pick the enemy currently nearest to the ladder base (most efficient route)
+	# Marksmen (type 2) belong on the high ground — send one up first if present;
+	# otherwise fall back to whoever is nearest the tower.
+	var best: Node = _nearest_tower_candidate(enemies, true)
+	if best == null:
+		best = _nearest_tower_candidate(enemies, false)
+	if best == null:
+		return
+	best.assign_objective(ladder_base)   # head to the ladder and climb it
+	_objective_enemy = weakref(best)
+
+func _nearest_tower_candidate(enemies: Array, marksman_only: bool) -> Node:
 	var best: Node = null
 	var best_d: float = INF
 	for e in enemies:
 		if not is_instance_valid(e): continue
 		if e.get("has_objective"): continue
+		if marksman_only and int(e.get("enemy_type")) != 2: continue   # 2 = MARKSMAN
 		var d: float = (e as Node3D).global_position.distance_to(ladder_base)
 		if d < best_d:
 			best_d = d
 			best = e
-	if best == null: return
-	best.assign_objective(ladder_base)
-	_objective_enemy = weakref(best)
+	return best

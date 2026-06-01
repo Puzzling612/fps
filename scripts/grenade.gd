@@ -41,14 +41,14 @@ func _explode() -> void:
 				var f: float = clampf(1.0 - d / blast_radius, min_falloff, 1.0)
 				p.take_damage(int(round(damage * f)), true)
 	else:
-		# Player grenade: radial damage to every enemy in the blast.
+		# Player grenade: FULL damage (no distance falloff) to every enemy inside
+		# the blast → one-shots anything in radius regardless of wave HP scaling.
 		for e in get_tree().get_nodes_in_group("enemies"):
 			if not is_instance_valid(e) or not e.has_method("take_damage"):
 				continue
 			var d: float = global_position.distance_to((e as Node3D).global_position)
 			if d <= blast_radius:
-				var f: float = clampf(1.0 - d / blast_radius, min_falloff, 1.0)
-				e.take_damage(int(round(damage * f)), false)
+				e.take_damage(damage, false)
 	# Brief explosion flash
 	var light := OmniLight3D.new()
 	light.light_color = Color(1.0, 0.6, 0.2)

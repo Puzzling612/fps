@@ -31,6 +31,20 @@ const ENEMY_INTEL := [
 	},
 ]
 
+# [action label, key(s)] — keep in sync with project.godot's input map.
+const CONTROLS := [
+	["이동", "W A S D"],
+	["점프", "Space"],
+	["질주", "Shift"],
+	["웅크리기", "C / Left Ctrl"],
+	["사격", "좌클릭"],
+	["조준 (ADS)", "우클릭"],
+	["재장전", "R"],
+	["수류탄 투척", "G"],
+	["무기 교체", "1~4 / 마우스 휠"],
+	["메뉴 복귀 (종료 화면)", "Enter"],
+]
+
 func _ready() -> void:
 	# Returning from gameplay leaves the mouse captured — restore the cursor.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -92,6 +106,10 @@ func _ready() -> void:
 	var start_btn := _make_button("START WAVE", _on_start)
 	vbox.add_child(start_btn)
 
+	# Infinite mode — no wave-10 victory; escalates forever
+	var infinite_btn := _make_button("INFINITE", _on_infinite)
+	vbox.add_child(infinite_btn)
+
 	# Enemy roster / intel
 	var intel_btn := _make_button("GUIDE", _toggle_intel)
 	vbox.add_child(intel_btn)
@@ -110,14 +128,23 @@ func _build_intel_panel() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_intel_panel.add_child(dim)
 
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_intel_panel.add_child(center)
+	# Scrollable content area; BACK stays fixed at the bottom (added later).
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.anchor_left = 0.5
+	scroll.anchor_right = 0.5
+	scroll.anchor_top = 0.0
+	scroll.anchor_bottom = 1.0
+	scroll.offset_left = -360.0
+	scroll.offset_right = 360.0
+	scroll.offset_top = 30.0
+	scroll.offset_bottom = -96.0
+	_intel_panel.add_child(scroll)
 
 	var vbox := VBoxContainer.new()
-	vbox.custom_minimum_size = Vector2(620, 0)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.add_theme_constant_override("separation", 14)
-	center.add_child(vbox)
+	scroll.add_child(vbox)
 
 	var header := Label.new()
 	header.text = "GUIDE"
@@ -132,13 +159,47 @@ func _build_intel_panel() -> void:
 	for e in ENEMY_INTEL:
 		vbox.add_child(_make_intel_row(e))
 
-	var gap2 := Control.new()
-	gap2.custom_minimum_size = Vector2(0, 16)
-	vbox.add_child(gap2)
+	# ── Controls ──
+	var ctrl_gap := Control.new()
+	ctrl_gap.custom_minimum_size = Vector2(0, 18)
+	vbox.add_child(ctrl_gap)
 
+	var ctrl_header := Label.new()
+	ctrl_header.text = "CONTROLS"
+	ctrl_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ctrl_header.add_theme_font_size_override("font_size", 30)
+	vbox.add_child(ctrl_header)
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 40)
+	grid.add_theme_constant_override("v_separation", 6)
+	vbox.add_child(grid)
+	for c in CONTROLS:
+		var action_lbl := Label.new()
+		action_lbl.text = c[0]
+		action_lbl.add_theme_font_size_override("font_size", 19)
+		action_lbl.custom_minimum_size = Vector2(280, 0)
+		grid.add_child(action_lbl)
+
+		var key_lbl := Label.new()
+		key_lbl.text = c[1]
+		key_lbl.add_theme_font_size_override("font_size", 19)
+		key_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4, 1))
+		key_lbl.custom_minimum_size = Vector2(280, 0)
+		grid.add_child(key_lbl)
+
+	# Fixed BACK button anchored to the bottom (outside the scroll area).
 	var back_btn := _make_button("BACK", _toggle_intel)
-	back_btn.custom_minimum_size = Vector2(620, 52)
-	vbox.add_child(back_btn)
+	back_btn.anchor_left = 0.5
+	back_btn.anchor_right = 0.5
+	back_btn.anchor_top = 1.0
+	back_btn.anchor_bottom = 1.0
+	back_btn.offset_left = -310.0
+	back_btn.offset_right = 310.0
+	back_btn.offset_top = -80.0
+	back_btn.offset_bottom = -24.0
+	_intel_panel.add_child(back_btn)
 
 func _make_intel_row(e: Dictionary) -> Control:
 	var row := HBoxContainer.new()
@@ -192,3 +253,7 @@ func _on_new_game() -> void:
 
 func _on_start() -> void:
 	GameManager.launch_game(_selected_wave)
+
+func _on_infinite() -> void:
+	# Endless run from the selected wave; never triggers the wave-10 victory.
+	GameManager.launch_game(_selected_wave, true)

@@ -11,7 +11,7 @@ extends CharacterBody3D
 # ─── Throwable grenades ───
 @export var grenades_per_wave: int = 3
 @export var max_grenades: int = 9
-@export var grenade_damage: int = 220
+@export var grenade_damage: int = 250
 @export var grenade_throw_speed: float = 17.0
 var grenades: int = 3
 @export var fov_default: float = 75.0
