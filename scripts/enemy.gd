@@ -582,7 +582,7 @@ func _shoot_at(player: Node) -> void:
 		hit_point = r.position
 		if r.collider == player and player.has_method("take_damage"):
 			var dmg := int(round(attack_damage * WaveBalance.falloff(from.distance_to(target))))
-			player.take_damage(dmg)
+			player.take_damage(dmg, false, from)
 	GameManager.weapon_fired.emit(from, hit_point, false, false)
 
 func _throw_grenade(player: Node) -> void:

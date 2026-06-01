@@ -67,6 +67,8 @@ func _ready() -> void:
 	GameManager.player_damaged.connect(_on_player_damaged_chroma)
 	GameManager.player_explosion_hit.connect(_on_player_explosion_hit)
 	GameManager.ads_changed.connect(_on_ads_changed)
+	GameManager.player_hit_dir.connect(_on_player_hit_dir)
+	_setup_hit_arrow()
 
 func _setup_chroma() -> void:
 	var shader: Shader = load("res://shaders/chroma.gdshader")
@@ -143,6 +145,34 @@ func _on_weapon_fired_chroma(_f: Vector3, _t: Vector3, hit_enemy: bool, _head: b
 func _on_player_damaged_chroma(_amt: int) -> void:
 	_chroma_t = 0.05
 
+# ── Directional damage indicator ──
+var _hit_arrow: Label = null
+var _hit_arrow_a: float = 0.0
+
+func _setup_hit_arrow() -> void:
+	_hit_arrow = Label.new()
+	_hit_arrow.anchor_left = 0.5
+	_hit_arrow.anchor_right = 0.5
+	_hit_arrow.anchor_top = 0.5
+	_hit_arrow.anchor_bottom = 0.5
+	_hit_arrow.text = "▲"
+	_hit_arrow.add_theme_font_size_override("font_size", 46)
+	_hit_arrow.add_theme_color_override("font_color", Color(1, 0.15, 0.15, 1))
+	_hit_arrow.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	_hit_arrow.add_theme_constant_override("outline_size", 5)
+	_hit_arrow.modulate.a = 0.0
+	add_child(_hit_arrow)
+
+func _on_player_hit_dir(angle: float) -> void:
+	if _hit_arrow == null:
+		return
+	# Place the arrow on a ring around the crosshair, pointing at the source.
+	var r := 120.0
+	_hit_arrow.position = Vector2(sin(angle) * r - 23.0, -cos(angle) * r - 28.0)
+	_hit_arrow.rotation = angle
+	_hit_arrow_a = 1.0
+	_hit_arrow.modulate.a = 1.0
+
 # Explosions get punchier screen feedback than a regular bullet hit.
 func _on_player_explosion_hit(_amt: int) -> void:
 	_vignette_alpha = 0.9
@@ -152,6 +182,10 @@ func _on_player_explosion_hit(_amt: int) -> void:
 	_chroma_t = 0.12
 
 func _process(delta: float) -> void:
+	if _hit_arrow and _hit_arrow_a > 0.0:
+		_hit_arrow_a = max(0.0, _hit_arrow_a - delta * 0.8)
+		_hit_arrow.modulate.a = _hit_arrow_a
+
 	if _chroma_mat and _chroma_t > 0.0:
 		var real_delta := delta / maxf(Engine.time_scale, 0.001)
 		_chroma_t = max(0.0, _chroma_t - real_delta)

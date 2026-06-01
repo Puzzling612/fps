@@ -13,6 +13,7 @@ signal enemy_killed(was_headshot: bool)
 signal player_damaged(amount: int)
 signal player_explosion_hit(amount: int)
 signal grenades_changed(count: int)
+signal player_hit_dir(angle: float)
 signal game_over_triggered
 signal game_won_triggered
 signal score_changed(value: int)

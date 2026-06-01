@@ -39,7 +39,7 @@ func _explode() -> void:
 			var d: float = global_position.distance_to((p as Node3D).global_position)
 			if d <= blast_radius:
 				var f: float = clampf(1.0 - d / blast_radius, min_falloff, 1.0)
-				p.take_damage(int(round(damage * f)), true)
+				p.take_damage(int(round(damage * f)), true, global_position)
 	else:
 		# Player grenade: FULL damage (no distance falloff) to every enemy inside
 		# the blast → one-shots anything in radius regardless of wave HP scaling.

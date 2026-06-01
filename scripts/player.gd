@@ -241,13 +241,21 @@ func add_screen_shake(strength: float, duration: float) -> void:
 	if strength > _shake_strength:
 		_shake_strength = strength
 
-func take_damage(amount: int, heavy: bool = false) -> void:
+func take_damage(amount: int, heavy: bool = false, from_pos: Vector3 = Vector3(INF, INF, INF)) -> void:
 	if GameManager.is_game_over:
 		return
 	amount = mini(amount, max_single_hit)
 	current_health = max(0, current_health - amount)
 	GameManager.player_health_changed.emit(current_health, max_health)
 	GameManager.player_damaged.emit(amount)
+	# Tell the HUD which way the hit came from (horizontal angle, 0 = front).
+	if from_pos.x < INF:
+		var to := from_pos - global_position
+		to.y = 0.0
+		if to.length() > 0.01:
+			var fwd := -global_transform.basis.z
+			var rgt := global_transform.basis.x
+			GameManager.player_hit_dir.emit(atan2(rgt.dot(to), fwd.dot(to)))
 	if heavy:
 		# Explosions hit much harder than bullets — heavier shake + a dedicated
 		# signal the HUD uses for a stronger vignette/flash.
