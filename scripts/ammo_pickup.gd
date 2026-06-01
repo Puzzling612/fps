@@ -27,8 +27,8 @@ func _on_body_entered(body: Node) -> void:
 		return
 	if body == GameManager.player and body.has_method("get") and body.get("weapon") != null:
 		var w = body.weapon
-		if w.has_method("add_ammo"):
-			w.add_ammo(ammo_amount)
+		if w.has_method("add_ammo_all"):
+			w.add_ammo_all(ammo_amount)
 			AudioManager.play_reload()
 			_collected = true
 			queue_free()

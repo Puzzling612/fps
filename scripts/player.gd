@@ -6,6 +6,14 @@ extends CharacterBody3D
 @export var gravity: float = 18.0
 @export var mouse_sensitivity: float = 0.18
 @export var max_health: int = 100
+@export var max_single_hit: int = 34   # hard cap per hit → never one-shot from full HP
+
+# ─── Throwable grenades ───
+@export var grenades_per_wave: int = 3
+@export var max_grenades: int = 9
+@export var grenade_damage: int = 220
+@export var grenade_throw_speed: float = 17.0
+var grenades: int = 3
 @export var fov_default: float = 75.0
 @export var fov_sprint: float = 86.0
 @export var fov_lerp_speed: float = 8.0
@@ -30,6 +38,7 @@ func exit_ladder() -> void:
 @onready var viewmodel: Node3D = $CameraPivot/Camera/Viewmodel
 
 const TRACER_SCENE: PackedScene = preload("res://scenes/Tracer.tscn")
+const GRENADE_SCENE: PackedScene = preload("res://scenes/Grenade.tscn")
 
 var weapon: Node
 var current_health: int
@@ -48,6 +57,13 @@ func _ready() -> void:
 	GameManager.register_player(self)
 	GameManager.player_health_changed.emit(current_health, max_health)
 	GameManager.weapon_fired.connect(_on_any_weapon_fired)
+	GameManager.player_damaged.connect(_on_player_damaged_shake)
+	GameManager.ads_changed.connect(_on_ads_changed_viewmodel)
+	GameManager.round_started.connect(_on_round_started_grenades)
+	# Each wave grants grenades_per_wave (see _on_round_started_grenades), so start
+	# empty — the first wave's round_started fills the initial stock.
+	grenades = 0
+	GameManager.grenades_changed.emit(grenades)
 
 	weapon = preload("res://scripts/weapon.gd").new()
 	add_child(weapon)
@@ -161,6 +177,9 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("reload"):
 		weapon.start_reload()
 
+	if Input.is_action_just_pressed("throw_grenade"):
+		_throw_grenade()
+
 # Called by the weapon system on the player's own shots (visuals/recoil).
 func fire_feedback(recoil_scale: float, is_headshot: bool) -> void:
 	if muzzle_flash:
@@ -169,7 +188,38 @@ func fire_feedback(recoil_scale: float, is_headshot: bool) -> void:
 	if viewmodel and viewmodel.has_method("add_recoil"):
 		viewmodel.add_recoil(recoil_scale)
 	if is_headshot:
-		add_screen_shake(0.07, 0.22)
+		add_screen_shake(0.06 * recoil_scale, 0.08)
+	else:
+		add_screen_shake(0.025 * recoil_scale, 0.06)
+
+func _on_player_damaged_shake(_amount: int) -> void:
+	add_screen_shake(0.12, 0.12)
+
+func _on_ads_changed_viewmodel(_active: bool, scoped: bool) -> void:
+	# Tuck the gun model away while looking down the sniper scope.
+	if viewmodel:
+		viewmodel.visible = not scoped
+
+# ─── Grenades ────────────────────────────────────────────────
+func _on_round_started_grenades(_n: int) -> void:
+	# Resupply each wave (carries a little over, up to the cap).
+	grenades = min(max_grenades, grenades + grenades_per_wave)
+	GameManager.grenades_changed.emit(grenades)
+
+func _throw_grenade() -> void:
+	if grenades <= 0 or GameManager.is_game_over:
+		return
+	grenades -= 1
+	GameManager.grenades_changed.emit(grenades)
+
+	var g := GRENADE_SCENE.instantiate()
+	get_tree().current_scene.add_child(g)
+	var cam_xf := camera.global_transform
+	var dir := -cam_xf.basis.z
+	g.global_position = cam_xf.origin + dir * 0.6
+	# Lob along the look direction with a slight upward arc; damages enemies only.
+	var vel := dir * grenade_throw_speed + Vector3.UP * 2.5
+	g.launch(vel, 1.6, grenade_damage, false)
 
 func _on_any_weapon_fired(from: Vector3, to: Vector3, _hit_enemy: bool, _is_headshot: bool) -> void:
 	# Player's own shots: tracers + feedback are handled by the weapon system.
@@ -191,12 +241,18 @@ func add_screen_shake(strength: float, duration: float) -> void:
 	if strength > _shake_strength:
 		_shake_strength = strength
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, heavy: bool = false) -> void:
 	if GameManager.is_game_over:
 		return
+	amount = mini(amount, max_single_hit)
 	current_health = max(0, current_health - amount)
 	GameManager.player_health_changed.emit(current_health, max_health)
 	GameManager.player_damaged.emit(amount)
+	if heavy:
+		# Explosions hit much harder than bullets — heavier shake + a dedicated
+		# signal the HUD uses for a stronger vignette/flash.
+		add_screen_shake(0.30, 0.34)
+		GameManager.player_explosion_hit.emit(amount)
 	if current_health <= 0:
 		GameManager.game_over()
 

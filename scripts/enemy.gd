@@ -11,6 +11,7 @@ extends CharacterBody3D
 @export var attack_damage: int = 8
 @export var attack_interval: float = 0.95
 @export var attack_range: float = 70.0
+@export var aggro_radius: float = 50.0     # only engage/chase when player is within this radius
 @export var preferred_distance: float = 11.0
 @export var min_distance: float = 6.0
 @export var distance_tolerance: float = 1.5
@@ -35,6 +36,7 @@ enum State { APPROACH, ENGAGE, EVADE, GOTO_OBJECTIVE, COMBAT }
 var state: State = State.APPROACH
 
 var health: int
+var _dead: bool = false
 var attack_cooldown: float = 0.0
 var strafe_dir: int = 1
 var strafe_timer: float = 0.0
@@ -140,12 +142,13 @@ func _apply_type_visuals() -> void:
 		model.scale *= scl
 
 # ─── Configuration (called by spawner before add_child) ──────
-func configure(w: int, t: int, d: float) -> void:
+func configure(w: int, t: int, _d: float) -> void:
+	# _d (DDA difficulty) is intentionally ignored: per-enemy threat is fixed.
 	enemy_type = t
 	max_health = WaveBalance.enemy_hp(w)
-	attack_damage = int(round(WaveBalance.enemy_dmg(w) * d))
+	attack_damage = WaveBalance.enemy_dmg(w)
 	attack_interval = WaveBalance.enemy_interval(w)
-	aim_spread_deg = WaveBalance.enemy_spread(w) / sqrt(d)
+	aim_spread_deg = WaveBalance.enemy_spread(w)
 	headshot_multiplier = WaveBalance.headshot_mult(w)
 	match t:
 		EnemyType.RUSHER:
@@ -163,7 +166,8 @@ func configure(w: int, t: int, d: float) -> void:
 			preferred_distance = 24.0
 			min_distance = 14.0
 			attack_range = 90.0
-			attack_damage = int(round(attack_damage * 3.2))
+			aggro_radius = 85.0     # marksman exception: engages from much farther
+			attack_damage = int(round(attack_damage * 2.0))
 			attack_interval = maxf(2.2, attack_interval * 2.6)
 			aim_spread_deg = 0.3
 		EnemyType.GRENADIER:
@@ -236,7 +240,7 @@ func _physics_process(delta: float) -> void:
 	velocity.z = desired.z
 
 	# Attack when in range and LOS — any state except climbing to objective
-	if state != State.GOTO_OBJECTIVE and attack_cooldown <= 0.0 and distance_p <= attack_range:
+	if state != State.GOTO_OBJECTIVE and attack_cooldown <= 0.0 and distance_p <= minf(attack_range, aggro_radius):
 		if _has_line_of_sight(player):
 			if enemy_type == EnemyType.GRENADIER:
 				_throw_grenade(player)
@@ -566,8 +570,17 @@ func _throw_grenade(player: Node) -> void:
 	GameManager.weapon_fired.emit(from, target, false, false)
 
 func take_damage(amount: int, is_headshot: bool = false) -> void:
+	# Guard against multiple lethal hits in the same frame (e.g. several shotgun
+	# pellets, or a grenade + bullet). queue_free() only removes at frame end, so
+	# without this the death path — and the alive-enemy count — would run twice.
+	if _dead:
+		return
 	var actual = int(round(float(amount) * (headshot_multiplier if is_headshot else 1.0)))
 	health -= actual
+	# Drop the HP bar instantly on hit (no gradual drain).
+	_displayed_hp = float(health)
+	if hp_progress:
+		hp_progress.value = _displayed_hp
 	flash_t = 0.08
 	_apply_flash(true)
 	# Trigger evasion sidestep
@@ -575,8 +588,10 @@ func take_damage(amount: int, is_headshot: bool = false) -> void:
 		evade_timer = evade_duration
 		evade_dir = -1 if randf() < 0.5 else 1
 	if health <= 0:
+		_dead = true
 		var gained = score_value + (headshot_score_bonus if is_headshot else 0)
 		GameManager.add_score(gained)
+		GameManager.enemy_killed.emit(is_headshot)
 		get_tree().call_group("enemy_spawner", "_on_enemy_died")
 		get_tree().call_group("ai_director", "report_kill")
 		queue_free()

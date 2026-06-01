@@ -135,6 +135,19 @@ size = Vector3(3.2, 0.85, 0.3)
 material = SubResource("Mat_Brick")
 size = Vector3(3.2, 0.85, 0.3)
 
+; ── Field cover pieces (added) ──
+[sub_resource type="BoxShape3D" id="BoxShape_Crate"]
+size = Vector3(1.6, 1.7, 1.6)
+[sub_resource type="BoxMesh" id="BoxMesh_Crate"]
+material = SubResource("Mat_Wood")
+size = Vector3(1.6, 1.7, 1.6)
+
+[sub_resource type="BoxShape3D" id="BoxShape_Barricade"]
+size = Vector3(3.6, 1.15, 0.45)
+[sub_resource type="BoxMesh" id="BoxMesh_Barricade"]
+material = SubResource("Mat_ConcreteDark")
+size = Vector3(3.6, 1.15, 0.45)
+
 [sub_resource type="BoxShape3D" id="BoxShape_LCover"]
 size = Vector3(3.0, 1.7, 0.3)
 [sub_resource type="BoxMesh" id="BoxMesh_LCover"]
@@ -329,6 +342,234 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 4.75, 6.85)
 shape = SubResource("BoxShape_CoverWall")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Building/CoverSE"]
 mesh = SubResource("BoxMesh_CoverWall")
+
+; ─────── Field cover (added: crates + barricades for player cover) ───────
+[node name="CoverField" type="Node3D" parent="."]
+
+[node name="Crate1" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0.85, -2)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Crate1"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Crate1"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="Crate2" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11, 0.85, -5)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Crate2"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Crate2"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="Crate3" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.85, -22)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Crate3"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Crate3"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="Crate4" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0.85, -24)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Crate4"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Crate4"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="Crate5" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.85, 6)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Crate5"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Crate5"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="Barricade1" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.575, -9)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Barricade1"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Barricade1"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="Barricade2" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7, 0.575, -13)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Barricade2"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Barricade2"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="Barricade3" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(0.707, 0, 0.707, 0, 1, 0, -0.707, 0, 0.707, -8, 0.575, -28)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Barricade3"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Barricade3"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="Barricade4" type="StaticBody3D" parent="CoverField"]
+transform = Transform3D(0.707, 0, -0.707, 0, 1, 0, 0.707, 0, 0.707, 5, 0.575, 1)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverField/Barricade4"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverField/Barricade4"]
+mesh = SubResource("BoxMesh_Barricade")
+
+; ─────── Edge cover (added: perimeter ring of crates + barricades) ───────
+[node name="EdgeCover" type="Node3D" parent="."]
+
+; -- Corner crates (full cover) --
+[node name="CornerNW" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 0.85, -30)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/CornerNW"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/CornerNW"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="CornerNE" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 0.85, -30)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/CornerNE"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/CornerNE"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="CornerSW" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 0.85, 12)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/CornerSW"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/CornerSW"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="CornerSE" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 0.85, 12)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/CornerSE"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/CornerSE"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="MidW" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 0.85, -21)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/MidW"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/MidW"]
+mesh = SubResource("BoxMesh_Crate")
+
+[node name="MidE" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 0.85, -21)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/MidE"]
+shape = SubResource("BoxShape_Crate")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/MidE"]
+mesh = SubResource("BoxMesh_Crate")
+
+; -- West edge barricades (run N–S, rotated 90°) --
+[node name="BarrW1" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -19, 0.575, -26)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrW1"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrW1"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrW2" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -19, 0.575, -16)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrW2"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrW2"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrW3" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -19, 0.575, -4)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrW3"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrW3"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrW4" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -19, 0.575, 6)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrW4"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrW4"]
+mesh = SubResource("BoxMesh_Barricade")
+
+; -- East edge barricades (run N–S, rotated 90°) --
+[node name="BarrE1" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 19, 0.575, -26)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrE1"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrE1"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrE2" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 19, 0.575, -16)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrE2"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrE2"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrE3" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 19, 0.575, -4)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrE3"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrE3"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrE4" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 19, 0.575, 6)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrE4"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrE4"]
+mesh = SubResource("BoxMesh_Barricade")
+
+; -- North edge barricades (run E–W) --
+[node name="BarrN1" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.575, -31)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrN1"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrN1"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrN2" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.575, -31)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrN2"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrN2"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrN3" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.575, -31)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrN3"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrN3"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrN4" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0.575, -31)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrN4"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrN4"]
+mesh = SubResource("BoxMesh_Barricade")
+
+; -- South edge barricades (run E–W) --
+[node name="BarrS1" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.575, 13)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrS1"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrS1"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrS2" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.575, 13)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrS2"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrS2"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrS3" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.575, 13)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrS3"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrS3"]
+mesh = SubResource("BoxMesh_Barricade")
+
+[node name="BarrS4" type="StaticBody3D" parent="EdgeCover"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0.575, 13)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeCover/BarrS4"]
+shape = SubResource("BoxShape_Barricade")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeCover/BarrS4"]
+mesh = SubResource("BoxMesh_Barricade")
 
 ; ─────── Watchtower (Tier 3, height 8m) ───────
 [node name="Watchtower" type="Node3D" parent="."]
@@ -735,7 +976,7 @@ script = ExtResource("ExtScr_PickupSpawner")
 ammo_scene = ExtResource("ExtPS_AmmoPickup")
 health_scene = ExtResource("ExtPS_HealthPickup")
 ammo_target_count = 5
-health_target_count = 3
+health_target_count = 6
 
 [node name="P01" type="Marker3D" parent="PickupSpawner"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 0.5, 14)

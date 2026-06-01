@@ -2,7 +2,8 @@ extends CanvasLayer
 
 @onready var hp_bar: ProgressBar = $HPPanel/HPBar
 @onready var hp_label: Label = $HPPanel/HPLabel
-@onready var ammo_label: Label = $AmmoLabel
+@onready var ammo_label: Label = $AmmoPanel/AmmoLabel
+@onready var weapon_label: Label = $AmmoPanel/WeaponLabel
 @onready var reload_label: Label = $ReloadLabel
 @onready var reload_bar: ProgressBar = $ReloadBar
 @onready var round_label: Label = $RoundLabel
@@ -32,6 +33,11 @@ var _reload_total: float = 0.0
 var _reload_remaining: float = 0.0
 var _is_reloading: bool = false
 var _crosshair_t: float = 0.0
+var _chroma_mat: ShaderMaterial = null
+var _chroma_t: float = 0.0
+var _scope_rect: ColorRect = null
+var _scope_mat: ShaderMaterial = null
+var _end_hint: Label = null
 
 func _ready() -> void:
 	GameManager.player_health_changed.connect(_on_hp_changed)
@@ -39,6 +45,7 @@ func _ready() -> void:
 	GameManager.round_started.connect(_on_round_started)
 	GameManager.score_changed.connect(_on_score_changed)
 	GameManager.game_over_triggered.connect(_on_game_over)
+	GameManager.game_won_triggered.connect(_on_game_won)
 	GameManager.reload_started.connect(_on_reload_started)
 	GameManager.reload_finished.connect(_on_reload_finished)
 	GameManager.weapon_fired.connect(_on_weapon_fired)
@@ -52,8 +59,104 @@ func _ready() -> void:
 	reload_bar.visible = false
 	message_timer.timeout.connect(_on_message_timeout)
 	_apply_crosshair(CROSSHAIR_INNER_REST, CROSSHAIR_OUTER_REST, COLOR_REST)
+	_setup_chroma()
+	_setup_scope()
+	_setup_grenade_counter()
+	GameManager.grenades_changed.connect(_on_grenades_changed)
+	GameManager.weapon_fired.connect(_on_weapon_fired_chroma)
+	GameManager.player_damaged.connect(_on_player_damaged_chroma)
+	GameManager.player_explosion_hit.connect(_on_player_explosion_hit)
+	GameManager.ads_changed.connect(_on_ads_changed)
+
+func _setup_chroma() -> void:
+	var shader: Shader = load("res://shaders/chroma.gdshader")
+	if shader == null:
+		return
+	_chroma_mat = ShaderMaterial.new()
+	_chroma_mat.shader = shader
+	_chroma_mat.set_shader_parameter("strength", 0.0)
+	var rect := ColorRect.new()
+	rect.color = Color(0, 0, 0, 0)   # transparent base; the shader draws the flash
+	rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.material = _chroma_mat
+	add_child(rect)
+
+var _grenade_label: Label = null
+
+func _setup_grenade_counter() -> void:
+	_grenade_label = Label.new()
+	_grenade_label.anchor_left = 1.0
+	_grenade_label.anchor_right = 1.0
+	_grenade_label.anchor_top = 1.0
+	_grenade_label.anchor_bottom = 1.0
+	_grenade_label.offset_left = -340.0
+	_grenade_label.offset_top = -134.0
+	_grenade_label.offset_right = -20.0
+	_grenade_label.offset_bottom = -104.0
+	_grenade_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_grenade_label.text = "✚ 0"
+	_grenade_label.add_theme_font_size_override("font_size", 24)
+	_grenade_label.add_theme_color_override("font_color", Color(0.55, 0.9, 0.55, 1))
+	_grenade_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	_grenade_label.add_theme_constant_override("outline_size", 4)
+	add_child(_grenade_label)
+
+func _on_grenades_changed(count: int) -> void:
+	if _grenade_label:
+		_grenade_label.text = "✚ %d  [G]" % count
+
+func _setup_scope() -> void:
+	var shader: Shader = load("res://shaders/scope.gdshader")
+	if shader == null:
+		return
+	_scope_mat = ShaderMaterial.new()
+	_scope_mat.shader = shader
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	_scope_mat.set_shader_parameter("aspect", vp.x / max(1.0, vp.y))
+	_scope_rect = ColorRect.new()
+	_scope_rect.color = Color(0, 0, 0, 0)
+	_scope_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_scope_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scope_rect.material = _scope_mat
+	_scope_rect.visible = false
+	add_child(_scope_rect)
+	get_viewport().size_changed.connect(_update_scope_aspect)
+
+func _update_scope_aspect() -> void:
+	if _scope_mat:
+		var vp: Vector2 = get_viewport().get_visible_rect().size
+		_scope_mat.set_shader_parameter("aspect", vp.x / max(1.0, vp.y))
+
+func _on_ads_changed(_active: bool, scoped: bool) -> void:
+	if _scope_rect:
+		_scope_rect.visible = scoped
+	# Hide the hipfire crosshair while looking through the scope.
+	var ch := get_node_or_null("Crosshair")
+	if ch:
+		ch.visible = not scoped
+
+func _on_weapon_fired_chroma(_f: Vector3, _t: Vector3, hit_enemy: bool, _head: bool) -> void:
+	if hit_enemy:
+		_chroma_t = 0.05
+
+func _on_player_damaged_chroma(_amt: int) -> void:
+	_chroma_t = 0.05
+
+# Explosions get punchier screen feedback than a regular bullet hit.
+func _on_player_explosion_hit(_amt: int) -> void:
+	_vignette_alpha = 0.9
+	var c = damage_vignette.color
+	c.a = _vignette_alpha
+	damage_vignette.color = c
+	_chroma_t = 0.12
 
 func _process(delta: float) -> void:
+	if _chroma_mat and _chroma_t > 0.0:
+		var real_delta := delta / maxf(Engine.time_scale, 0.001)
+		_chroma_t = max(0.0, _chroma_t - real_delta)
+		_chroma_mat.set_shader_parameter("strength", _chroma_t / 0.05)
+
 	if _vignette_alpha > 0.0:
 		_vignette_alpha = max(0.0, _vignette_alpha - delta * 1.5)
 		var c = damage_vignette.color
@@ -100,6 +203,32 @@ func _on_score_changed(value: int) -> void:
 
 func _on_game_over() -> void:
 	game_over_label.visible = true
+	_show_end_hint()
+
+func _on_game_won() -> void:
+	game_over_label.text = "VICTORY!"
+	game_over_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.5, 1))
+	game_over_label.visible = true
+	_show_end_hint()
+
+func _show_end_hint() -> void:
+	if _end_hint == null:
+		_end_hint = Label.new()
+		_end_hint.anchor_left = 0.5
+		_end_hint.anchor_right = 0.5
+		_end_hint.anchor_top = 0.5
+		_end_hint.anchor_bottom = 0.5
+		_end_hint.offset_left = -300.0
+		_end_hint.offset_top = 70.0
+		_end_hint.offset_right = 300.0
+		_end_hint.offset_bottom = 110.0
+		_end_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_end_hint.text = "Press ENTER for menu"
+		_end_hint.add_theme_font_size_override("font_size", 28)
+		_end_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		_end_hint.add_theme_constant_override("outline_size", 4)
+		add_child(_end_hint)
+	_end_hint.visible = true
 
 func _on_hp_changed(current: int, maximum: int) -> void:
 	hp_bar.max_value = maximum
@@ -120,7 +249,8 @@ func _on_weapon_changed(weapon_name: String) -> void:
 	_render_ammo()
 
 func _render_ammo() -> void:
-	ammo_label.text = "%s   %d/%d   %d" % [_weapon_name, _mag, _mag_size, _reserve]
+	weapon_label.text = _weapon_name
+	ammo_label.text = "%d/%d   %d" % [_mag, _mag_size, _reserve]
 
 func _on_weapon_unlocked(weapon_name: String) -> void:
 	center_message.text = "%s UNLOCKED" % weapon_name

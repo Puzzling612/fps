@@ -8,14 +8,48 @@ signal weapon_unlocked(weapon_name: String)
 signal reload_started(duration: float)
 signal reload_finished
 signal weapon_fired(from: Vector3, to: Vector3, hit_enemy: bool, is_headshot: bool)
+signal ads_changed(active: bool, scoped: bool)
+signal enemy_killed(was_headshot: bool)
 signal player_damaged(amount: int)
+signal player_explosion_hit(amount: int)
+signal grenades_changed(count: int)
 signal game_over_triggered
+signal game_won_triggered
 signal score_changed(value: int)
 
 var score: int = 0
 var current_round: int = 0
+var start_wave: int = 1
+var win_wave: int = 10          # clearing this wave wins the run
 var is_game_over: bool = false
+var is_won: bool = false
 var player: Node = null
+
+var _hitstop_t: float = 0.0
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Hitstop fires only on a KILL, never on every hit — otherwise fast-firing
+	# weapons (SMG/AR) would stutter constantly while spraying a target.
+	enemy_killed.connect(_on_enemy_killed_hitstop)
+
+func _process(delta: float) -> void:
+	if _hitstop_t > 0.0:
+		_hitstop_t -= delta / maxf(Engine.time_scale, 0.001)
+		if _hitstop_t <= 0.0:
+			_hitstop_t = 0.0
+			Engine.time_scale = 1.0
+	# On the end screens (paused), Enter/Space returns to the main menu.
+	if (is_game_over or is_won) and Input.is_action_just_pressed("ui_accept"):
+		restart_game()
+
+func _on_enemy_killed_hitstop(was_headshot: bool) -> void:
+	if was_headshot:
+		Engine.time_scale = 0.05
+		_hitstop_t = 0.08
+	else:
+		Engine.time_scale = 0.18
+		_hitstop_t = 0.045
 
 func register_player(p: Node) -> void:
 	player = p
@@ -29,16 +63,35 @@ func start_round(n: int) -> void:
 	round_started.emit(n)
 
 func game_over() -> void:
-	if is_game_over:
+	if is_game_over or is_won:
 		return
 	is_game_over = true
 	game_over_triggered.emit()
 	get_tree().paused = true
 
-func restart_game() -> void:
+func game_win() -> void:
+	if is_won or is_game_over:
+		return
+	is_won = true
+	game_won_triggered.emit()
+	get_tree().paused = true
+
+func launch_game(wave: int) -> void:
 	score = 0
-	current_round = 0
+	start_wave = wave
+	current_round = wave - 1
 	is_game_over = false
+	is_won = false
 	player = null
 	get_tree().paused = false
-	get_tree().reload_current_scene()
+	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+
+func restart_game() -> void:
+	score = 0
+	start_wave = 1
+	current_round = 0
+	is_game_over = false
+	is_won = false
+	player = null
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")

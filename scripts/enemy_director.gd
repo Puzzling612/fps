@@ -64,10 +64,10 @@ func _recompute_difficulty() -> void:
 	var perf := 0.5 * avg_hp + 0.3 * kill_speed + 0.2 * hs
 	var c: float = profiler.memory.total.confidence()   # soften early adjustments
 	if perf > 0.65:
-		difficulty += 0.05 * c          # too easy → tighten (gated by confidence)
+		difficulty += 0.03 * c          # too easy → tighten (gentle, gated by confidence)
 	elif perf < 0.45:
-		difficulty -= 0.08              # too hard → ease (protect beginners, ungated)
-	difficulty = clampf(difficulty, 0.75, 1.30)
+		difficulty -= 0.10              # too hard → ease faster (protect the player)
+	difficulty = clampf(difficulty, 0.75, 1.15)
 
 func _setup_profiler_if_needed() -> void:
 	if _profiler_setup_done:

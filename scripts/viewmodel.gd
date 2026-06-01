@@ -10,6 +10,11 @@ extends Node3D
 @export var sway_amplitude_x: float = 0.003
 @export var sway_speed: float = 1.6
 
+# Iron-sight ADS pose for the assault rifle: gun pulled to screen centre so the
+# front post lines up through the rear notch. Tunable in the inspector.
+@export var ads_lerp_speed: float = 16.0
+@export var ar_ads_pos: Vector3 = Vector3(0.0, -0.052, 0.04)
+
 var _base_pos: Vector3
 var _base_rot: Vector3
 var _recoil_pos: Vector3 = Vector3.ZERO
@@ -19,6 +24,13 @@ var _t: float = 0.0
 
 var _models: Dictionary = {}   # display_name -> Node3D
 var _current_model: Node3D = null
+var _current_name: String = ""
+
+# Iron sights (AR only): shown solely while aiming down sights.
+var _ar_sights: Array[MeshInstance3D] = []
+var _ads_active: bool = false
+var _pose_pos: Vector3 = Vector3.ZERO
+var _pose_rot: Vector3 = Vector3.ZERO
 
 # Shared materials
 var _mat_body: StandardMaterial3D
@@ -33,6 +45,10 @@ func _ready() -> void:
 
 	_base_pos = position
 	_base_rot = rotation
+	_pose_pos = position
+	_pose_rot = rotation
+	# Resolve ADS depth relative to the model's resting depth.
+	ar_ads_pos.z = _base_pos.z + 0.04
 	_init_mats()
 
 	_models["ASSAULT RIFLE"] = _build_ar()
@@ -45,6 +61,8 @@ func _ready() -> void:
 
 	if not GameManager.weapon_changed.is_connected(_on_weapon_changed):
 		GameManager.weapon_changed.connect(_on_weapon_changed)
+	if not GameManager.ads_changed.is_connected(_on_ads_changed):
+		GameManager.ads_changed.connect(_on_ads_changed)
 	_show("ASSAULT RIFLE")
 
 func _process(delta: float) -> void:
@@ -54,13 +72,24 @@ func _process(delta: float) -> void:
 	_recoil_rot_x = lerp(_recoil_rot_x, 0.0, k)
 	_recoil_rot_y = lerp(_recoil_rot_y, 0.0, k)
 
+	# Slide between the resting pose and the centred iron-sight pose.
+	var ads_k: float = clamp(ads_lerp_speed * delta, 0.0, 1.0)
+	var target_pose: Vector3 = ar_ads_pos if _ads_active else _base_pos
+	_pose_pos = _pose_pos.lerp(target_pose, ads_k)
+
+	# While aiming, flatten the gun's resting tilt so the barrel/sights point
+	# straight down the camera axis (otherwise the front post sits off-centre).
+	var target_rot: Vector3 = Vector3.ZERO if _ads_active else _base_rot
+	_pose_rot = _pose_rot.lerp(target_rot, ads_k)
+
+	var sway_scale: float = 0.25 if _ads_active else 1.0
 	var sway = Vector3(
 		sin(_t * sway_speed * 0.7) * sway_amplitude_x,
 		sin(_t * sway_speed) * sway_amplitude_y,
 		0.0
-	)
-	position = _base_pos + _recoil_pos + sway
-	rotation = Vector3(_base_rot.x + _recoil_rot_x, _base_rot.y + _recoil_rot_y, _base_rot.z)
+	) * sway_scale
+	position = _pose_pos + _recoil_pos + sway
+	rotation = Vector3(_pose_rot.x + _recoil_rot_x, _pose_rot.y + _recoil_rot_y, _pose_rot.z)
 
 func add_recoil(scale: float = 1.0) -> void:
 	_recoil_pos.z += recoil_kick_back * scale
@@ -77,6 +106,14 @@ func _show(weapon_name: String) -> void:
 		_current_model.visible = false
 	_current_model = _models[weapon_name]
 	_current_model.visible = true
+	_current_name = weapon_name
+
+# Iron sights appear only while the AR is aimed down sights (RMB held).
+func _on_ads_changed(active: bool, scoped: bool) -> void:
+	_ads_active = active and not scoped and _current_name == "ASSAULT RIFLE"
+	for s in _ar_sights:
+		if is_instance_valid(s):
+			s.visible = _ads_active
 
 # ─── Materials ───────────────────────────────────────────────
 func _init_mats() -> void:
@@ -120,7 +157,25 @@ func _build_ar() -> Node3D:
 	_box(g, Vector3(0.045, 0.17, 0.055), _mat_plastic, Vector3(0, -0.115, 0.085), Vector3(-10, 0, 0))
 	_box(g, Vector3(0.046, 0.13, 0.04), _mat_dark, Vector3(0, -0.1, -0.02))
 	_box(g, Vector3(0.022, 0.022, 0.16), _mat_dark, Vector3(0, 0.005, -0.27))
+	# ── Iron sights (centreline, hidden until ADS) ──
+	var front := _sight_box(g, Vector3(0.005, 0.034, 0.005), Vector3(0, 0.052, -0.23))
+	var rear_l := _sight_box(g, Vector3(0.005, 0.028, 0.005), Vector3(-0.013, 0.05, 0.12))
+	var rear_r := _sight_box(g, Vector3(0.005, 0.028, 0.005), Vector3(0.013, 0.05, 0.12))
+	_ar_sights = [front, rear_l, rear_r]
+	for s in _ar_sights:
+		s.visible = false
 	return g
+
+# Like _box but returns the node so we can keep a reference (used for iron sights).
+func _sight_box(parent: Node3D, size: Vector3, pos: Vector3) -> MeshInstance3D:
+	var bm := BoxMesh.new()
+	bm.size = size
+	var mi := MeshInstance3D.new()
+	mi.mesh = bm
+	mi.material_override = _mat_dark
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
 
 func _build_shotgun() -> Node3D:
 	var g := Node3D.new()

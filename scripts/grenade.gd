@@ -9,14 +9,16 @@ extends Node3D
 var velocity: Vector3 = Vector3.ZERO
 var fuse: float = 2.0
 var damage: int = 20
+var hits_player: bool = true   # enemy grenades hurt the player; player grenades hurt enemies
 var _armed: bool = false
 
 @onready var mesh: MeshInstance3D = $Mesh
 
-func launch(vel: Vector3, fuse_time: float, dmg: int) -> void:
+func launch(vel: Vector3, fuse_time: float, dmg: int, hits_player_: bool = true) -> void:
 	velocity = vel
 	fuse = fuse_time
 	damage = dmg
+	hits_player = hits_player_
 	_armed = true
 
 func _physics_process(delta: float) -> void:
@@ -31,12 +33,22 @@ func _physics_process(delta: float) -> void:
 
 func _explode() -> void:
 	_armed = false
-	var p = GameManager.player
-	if is_instance_valid(p) and p.has_method("take_damage"):
-		var d: float = global_position.distance_to((p as Node3D).global_position)
-		if d <= blast_radius:
-			var f: float = clampf(1.0 - d / blast_radius, min_falloff, 1.0)
-			p.take_damage(int(round(damage * f)))
+	if hits_player:
+		var p = GameManager.player
+		if is_instance_valid(p) and p.has_method("take_damage"):
+			var d: float = global_position.distance_to((p as Node3D).global_position)
+			if d <= blast_radius:
+				var f: float = clampf(1.0 - d / blast_radius, min_falloff, 1.0)
+				p.take_damage(int(round(damage * f)), true)
+	else:
+		# Player grenade: radial damage to every enemy in the blast.
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if not is_instance_valid(e) or not e.has_method("take_damage"):
+				continue
+			var d: float = global_position.distance_to((e as Node3D).global_position)
+			if d <= blast_radius:
+				var f: float = clampf(1.0 - d / blast_radius, min_falloff, 1.0)
+				e.take_damage(int(round(damage * f)), false)
 	# Brief explosion flash
 	var light := OmniLight3D.new()
 	light.light_color = Color(1.0, 0.6, 0.2)
