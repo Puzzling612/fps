@@ -37,6 +37,11 @@ var _mat_body: StandardMaterial3D
 var _mat_dark: StandardMaterial3D
 var _mat_plastic: StandardMaterial3D
 var _mat_accent: StandardMaterial3D
+var _mat_blade: StandardMaterial3D
+
+# Melee knife (hidden until a swing)
+var _knife: Node3D = null
+var _swinging: bool = false
 
 func _ready() -> void:
 	# Drop any placeholder meshes authored in the scene; we build our own.
@@ -58,6 +63,10 @@ func _ready() -> void:
 	for m in _models.values():
 		m.visible = false
 		add_child(m)
+
+	_knife = _build_knife()
+	_knife.visible = false
+	add_child(_knife)
 
 	if not GameManager.weapon_changed.is_connected(_on_weapon_changed):
 		GameManager.weapon_changed.connect(_on_weapon_changed)
@@ -91,6 +100,44 @@ func _process(delta: float) -> void:
 	position = _pose_pos + _recoil_pos + sway
 	rotation = Vector3(_pose_rot.x + _recoil_rot_x, _pose_rot.y + _recoil_rot_y, _pose_rot.z)
 
+# ─── Melee knife ─────────────────────────────────────────────
+func _build_knife() -> Node3D:
+	var g := Node3D.new()
+	# Blade (bright metal), edge tapering forward.
+	_box(g, Vector3(0.018, 0.05, 0.26), _mat_blade, Vector3(0, 0, -0.15))
+	_box(g, Vector3(0.012, 0.03, 0.06), _mat_blade, Vector3(0, 0.0, -0.30))   # tip
+	# Cross-guard + handle.
+	_box(g, Vector3(0.07, 0.018, 0.02), _mat_dark, Vector3(0, 0, -0.02))
+	_box(g, Vector3(0.028, 0.032, 0.11), _mat_plastic, Vector3(0, -0.004, 0.05))
+	return g
+
+# Plays a quick diagonal slash, hiding the gun for the duration. Driven by a
+# tween on the knife's LOCAL transform — _process only writes the rig (self),
+# so the knife's own pose is left intact.
+func play_melee() -> void:
+	if _knife == null or _swinging:
+		return
+	_swinging = true
+	var gun: Node3D = _current_model
+	if gun:
+		gun.visible = false
+	_knife.visible = true
+	# Wind-up pose: upper-right, blade angled across the screen.
+	_knife.position = Vector3(0.14, 0.06, -0.18)
+	_knife.rotation = Vector3(deg_to_rad(18), deg_to_rad(-28), deg_to_rad(55))
+	var tw := create_tween()
+	# Slash down-left across the view.
+	tw.tween_property(_knife, "rotation",
+		Vector3(deg_to_rad(-12), deg_to_rad(28), deg_to_rad(-65)), 0.11).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_knife, "position",
+		Vector3(-0.14, -0.10, -0.30), 0.11).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.06)
+	tw.tween_callback(func() -> void:
+		_knife.visible = false
+		if is_instance_valid(gun):
+			gun.visible = true
+		_swinging = false)
+
 func add_recoil(scale: float = 1.0) -> void:
 	_recoil_pos.z += recoil_kick_back * scale
 	_recoil_rot_x += recoil_kick_up * scale
@@ -121,6 +168,7 @@ func _init_mats() -> void:
 	_mat_dark = _mat(Color(0.06, 0.06, 0.07), 0.55, 0.3)
 	_mat_plastic = _mat(Color(0.09, 0.09, 0.10), 0.75, 0.0)
 	_mat_accent = _mat(Color(0.55, 0.32, 0.06), 0.4, 0.4)
+	_mat_blade = _mat(Color(0.72, 0.74, 0.8), 0.22, 0.95)
 
 func _mat(c: Color, r: float, m: float) -> StandardMaterial3D:
 	var mt := StandardMaterial3D.new()

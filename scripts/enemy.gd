@@ -26,6 +26,19 @@ extends CharacterBody3D
 @export var jump_cooldown: float = 0.35
 @export var ladder_climb_speed: float = 5.0
 
+# ─── Melee ───
+# When the player gets very close, enemies ditch the gun and swing — faster than
+# shooting and no line-of-sight needed.
+@export var melee_range: float = 2.5
+@export var melee_damage: int = 10
+@export var melee_interval: float = 0.8
+
+# Held weapon meshes (built in code, attached to the body). Gun is always shown;
+# the knife only appears during a melee swing.
+var _gun_node: Node3D = null
+var _knife_node: Node3D = null
+var _enemy_swinging: bool = false
+
 # ─── Enemy types ─────────────────────────────────────────────
 enum EnemyType { NORMAL, RUSHER, MARKSMAN, GRENADIER }
 @export var enemy_type: EnemyType = EnemyType.NORMAL
@@ -117,6 +130,39 @@ func _ready() -> void:
 		hp_progress.max_value = max_health
 		hp_progress.value = max_health
 
+	_build_held_weapons()
+
+# Build a simple gun (always held) + a knife (shown only mid-swing), parented to
+# the body so they track the enemy's facing via look_at.
+func _build_held_weapons() -> void:
+	var metal := StandardMaterial3D.new()
+	metal.albedo_color = Color(0.09, 0.09, 0.11); metal.metallic = 0.6; metal.roughness = 0.4
+
+	_gun_node = Node3D.new()
+	add_child(_gun_node)
+	_gun_node.position = Vector3(0.28, 0.15, -0.30)   # right hand, chest height, forward (-z)
+	var body := MeshInstance3D.new()
+	var bm := BoxMesh.new(); bm.size = Vector3(0.09, 0.13, 0.46)
+	body.mesh = bm; body.material_override = metal; body.position = Vector3(0, 0, -0.08)
+	_gun_node.add_child(body)
+	var barrel := MeshInstance3D.new()
+	var cm := CylinderMesh.new(); cm.top_radius = 0.024; cm.bottom_radius = 0.024
+	cm.height = 0.4; cm.radial_segments = 8
+	barrel.mesh = cm; barrel.material_override = metal
+	barrel.rotation = Vector3(deg_to_rad(90), 0, 0); barrel.position = Vector3(0, 0.02, -0.4)
+	_gun_node.add_child(barrel)
+
+	var blade_mat := StandardMaterial3D.new()
+	blade_mat.albedo_color = Color(0.72, 0.74, 0.8); blade_mat.metallic = 0.95; blade_mat.roughness = 0.22
+	_knife_node = Node3D.new()
+	add_child(_knife_node)
+	_knife_node.position = Vector3(0.28, 0.22, -0.30)
+	var blade := MeshInstance3D.new()
+	var kbm := BoxMesh.new(); kbm.size = Vector3(0.03, 0.07, 0.36)
+	blade.mesh = kbm; blade.material_override = blade_mat; blade.position = Vector3(0, 0, -0.2)
+	_knife_node.add_child(blade)
+	_knife_node.visible = false
+
 func _collect_meshes(node: Node) -> void:
 	if node is MeshInstance3D:
 		_model_meshes.append(node)
@@ -172,7 +218,7 @@ func configure(w: int, t: int, _d: float) -> void:
 			attack_range = 90.0
 			aggro_radius = 85.0     # marksman exception: engages from much farther
 			attack_damage = int(round(attack_damage * 2.0))
-			attack_interval = maxf(2.2, attack_interval * 2.6)
+			attack_interval = maxf(1.6, attack_interval * 2.0)
 			aim_spread_deg = 0.3
 		EnemyType.GRENADIER:
 			max_health = int(max_health * 1.0)
@@ -180,6 +226,8 @@ func configure(w: int, t: int, _d: float) -> void:
 			min_distance = 10.0
 			attack_range = 40.0
 			attack_interval = maxf(2.4, attack_interval * 2.4)
+			# Slow lobbed attack, but each grenade now lands a heavier blast.
+			attack_damage = int(round(attack_damage * 1.8))
 
 # ─── Director API ────────────────────────────────────────────
 func assign_slot(pos: Vector3, new_role: String) -> void:
@@ -248,9 +296,15 @@ func _physics_process(delta: float) -> void:
 	velocity.x = desired.x
 	velocity.z = desired.z
 
-	# Attack when in range and LOS — any state except climbing to objective
-	if state != State.GOTO_OBJECTIVE and attack_cooldown <= 0.0 and distance_p <= minf(attack_range, aggro_radius):
-		if _has_line_of_sight(player):
+	# Attack — any state except climbing to objective.
+	if state != State.GOTO_OBJECTIVE and attack_cooldown <= 0.0:
+		var same_level: bool = absf(global_position.y - (player as Node3D).global_position.y) < 2.5
+		if distance_p <= melee_range and same_level:
+			# Point-blank → melee. No LOS needed, faster than shooting. (Skipped
+			# while perched high up, where the player is below, not adjacent.)
+			_melee_attack_player(player)
+			attack_cooldown = melee_interval
+		elif distance_p <= minf(attack_range, aggro_radius) and _has_line_of_sight(player):
 			if enemy_type == EnemyType.GRENADIER:
 				_throw_grenade(player)
 			else:
@@ -391,6 +445,11 @@ func _compute_cover_target(player_pos: Vector3) -> Vector3:
 	return best
 
 func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, delta: float) -> Vector3:
+	# Once perched on the watchtower, hold it: only ever strafe in place, never let
+	# any state (COMBAT, APPROACH, …) navigate the enemy off the edge. Climbing
+	# enemies (has_objective / on_ladder) are exempt so they can still reach the top.
+	if global_position.y > 5.0 and not has_objective and not on_ladder:
+		return _perched_strafe(forward_to_player, delta)
 	match state:
 		State.EVADE:
 			var right := Vector3(forward_to_player.z, 0, -forward_to_player.x)
@@ -550,21 +609,39 @@ func _should_jump() -> bool:
 	return true
 
 # ─── Combat ──────────────────────────────────────────────────
+# RIDs to ignore when shooting / checking sight: ourself plus every other enemy.
+# Friendlies clustered around the player must NOT block fire — otherwise a ranged
+# enemy (marksman) is forever shooting allies in the back and never hits the player.
+func _shot_exclusions() -> Array[RID]:
+	var ex: Array[RID] = [get_rid()]
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e is CollisionObject3D and e != self:
+			ex.append((e as CollisionObject3D).get_rid())
+	return ex
+
 func _has_line_of_sight(player: Node) -> bool:
 	var from: Vector3 = global_position + Vector3(0, 1.2, 0)
-	var to: Vector3 = (player as Node3D).global_position + Vector3(0, 1.0, 0)
+	var to: Vector3 = (player as Node3D).global_position + Vector3(0, 0.3, 0)
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(from, to)
-	q.exclude = [get_rid()]
+	q.exclude = _shot_exclusions()
 	var r := space.intersect_ray(q)
 	if r.is_empty(): return true
 	return r.collider == player
 
 func _shoot_at(player: Node) -> void:
 	var from: Vector3 = global_position + Vector3(0, 1.2, 0)
-	var target: Vector3 = (player as Node3D).global_position + Vector3(0, 1.0, 0)
+	# Aim at the player's chest. The player capsule is centered on its origin
+	# (height 1.6 → top is only +0.8), so the old +1.0 target sat ABOVE the
+	# hitbox and tight-spread shooters (marksmen) missed every time.
+	var target: Vector3 = (player as Node3D).global_position + Vector3(0, 0.3, 0)
 	var dir: Vector3 = (target - from).normalized()
-	var spread: float = deg_to_rad(aim_spread_deg)
+	var spread_deg: float = aim_spread_deg
+	# High ground is a genuine advantage: a perched shooter has a stable, commanding
+	# sightline, so it aims far tighter than it would scrambling on the ground.
+	if global_position.y > 5.0:
+		spread_deg *= 0.35
+	var spread: float = deg_to_rad(spread_deg)
 	var basis_z: Vector3 = -dir
 	var basis_x: Vector3 = Vector3.UP.cross(basis_z).normalized()
 	if basis_x.length() < 0.01: basis_x = Vector3.RIGHT
@@ -575,7 +652,7 @@ func _shoot_at(player: Node) -> void:
 	var end: Vector3 = from + spread_dir * attack_range
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(from, end)
-	q.exclude = [get_rid()]
+	q.exclude = _shot_exclusions()
 	var r := space.intersect_ray(q)
 	var hit_point: Vector3 = end
 	if not r.is_empty():
@@ -584,6 +661,32 @@ func _shoot_at(player: Node) -> void:
 			var dmg := int(round(attack_damage * WaveBalance.falloff(from.distance_to(target))))
 			player.take_damage(dmg, false, from)
 	GameManager.weapon_fired.emit(from, hit_point, false, false)
+
+func _melee_attack_player(player: Node) -> void:
+	if player.has_method("take_damage"):
+		player.take_damage(melee_damage, false, global_position)
+	_swing_knife()
+
+# Quick knife slash: hide the gun, sweep the knife, then restore the gun. Tween
+# is on the knife's local rotation; look_at only drives the body's yaw.
+func _swing_knife() -> void:
+	if _knife_node == null or _enemy_swinging:
+		return
+	_enemy_swinging = true
+	if _gun_node:
+		_gun_node.visible = false
+	_knife_node.visible = true
+	_knife_node.rotation = Vector3(deg_to_rad(45), 0, deg_to_rad(35))
+	var tw := create_tween()
+	tw.tween_property(_knife_node, "rotation",
+		Vector3(deg_to_rad(-35), 0, deg_to_rad(-25)), 0.12).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.06)
+	tw.tween_callback(func() -> void:
+		if is_instance_valid(_knife_node):
+			_knife_node.visible = false
+		if is_instance_valid(_gun_node):
+			_gun_node.visible = true
+		_enemy_swinging = false)
 
 func _throw_grenade(player: Node) -> void:
 	var from: Vector3 = global_position + Vector3(0, 1.4, 0)
@@ -623,6 +726,11 @@ func take_damage(amount: int, is_headshot: bool = false) -> void:
 		evade_dir = -1 if randf() < 0.5 else 1
 	if health <= 0:
 		_dead = true
+		# Death VFX in the enemy's body color, brighter for headshots.
+		var fx_color: Color = _base_override.albedo_color if _base_override else Color(0.85, 0.2, 0.2)
+		if is_headshot:
+			fx_color = fx_color.lerp(Color(1, 0.95, 0.4), 0.5)
+		FX.death_burst(get_tree().current_scene, global_position + Vector3(0, 1.0, 0), fx_color)
 		var gained = score_value + (headshot_score_bonus if is_headshot else 0)
 		GameManager.add_score(gained)
 		GameManager.enemy_killed.emit(is_headshot)

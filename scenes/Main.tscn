@@ -966,8 +966,11 @@ shape = SubResource("BoxShape_Boundary")
 script = ExtResource("ExtScr_PickupSpawner")
 ammo_scene = ExtResource("ExtPS_AmmoPickup")
 health_scene = ExtResource("ExtPS_HealthPickup")
-ammo_target_count = 5
-health_target_count = 6
+ammo_target_count = 3
+health_target_count = 3
+spawn_delay_min = 2.0
+spawn_delay_max = 5.0
+min_distance_between = 9.0
 
 [node name="P01" type="Marker3D" parent="PickupSpawner"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 0.5, 14)

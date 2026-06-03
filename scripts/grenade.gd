@@ -3,8 +3,9 @@ extends Node3D
 # on ground contact or fuse end, dealing radial damage to the player.
 
 @export var gravity: float = 16.0
-@export var blast_radius: float = 4.5
+@export var blast_radius: float = 5.6
 @export var min_falloff: float = 0.25
+@export var wall_bounce_damping: float = 0.6  # 벽에 튕길 때 속도 유지 비율
 
 var velocity: Vector3 = Vector3.ZERO
 var fuse: float = 2.0
@@ -25,10 +26,36 @@ func _physics_process(delta: float) -> void:
 	if not _armed:
 		return
 	velocity.y -= gravity * delta
-	global_position += velocity * delta
-	rotate_x(8.0 * delta)
+	var motion: Vector3 = velocity * delta
+	var next_pos: Vector3 = global_position + motion
+	rotate_x(velocity.length() * delta * 2.0)
 	fuse -= delta
-	if fuse <= 0.0 or global_position.y <= 0.15:
+
+	# Bounce off walls (vertical static geometry); detonate on the ground or any
+	# near-horizontal surface — no more ground bouncing.
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(global_position, next_pos)
+	var r := space.intersect_ray(q)
+	if not r.is_empty() and r.collider is StaticBody3D:
+		var n: Vector3 = r.normal
+		if absf(n.y) < 0.55:
+			# Wall: reflect the velocity and keep flying.
+			global_position = r.position + n * 0.06
+			velocity = (velocity - 2.0 * velocity.dot(n) * n) * wall_bounce_damping
+		else:
+			# Floor / ramp / ceiling hit head-on → explode.
+			global_position = r.position
+			_explode()
+			return
+	else:
+		global_position = next_pos
+
+	# Safety net for the flat ground plane.
+	if global_position.y <= 0.15:
+		global_position.y = 0.15
+		_explode()
+		return
+	if fuse <= 0.0:
 		_explode()
 
 func _explode() -> void:
@@ -49,14 +76,6 @@ func _explode() -> void:
 			var d: float = global_position.distance_to((e as Node3D).global_position)
 			if d <= blast_radius:
 				e.take_damage(damage, false)
-	# Brief explosion flash
-	var light := OmniLight3D.new()
-	light.light_color = Color(1.0, 0.6, 0.2)
-	light.light_energy = 6.0
-	light.omni_range = blast_radius * 1.5
-	get_tree().current_scene.add_child(light)
-	light.global_position = global_position
-	var tw := light.create_tween()
-	tw.tween_property(light, "light_energy", 0.0, 0.25)
-	tw.tween_callback(light.queue_free)
+	# Explosion VFX: flash, fireball, shockwave ring, sparks, smoke.
+	FX.explosion(get_tree().current_scene, global_position, blast_radius)
 	queue_free()

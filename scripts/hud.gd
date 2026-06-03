@@ -97,7 +97,7 @@ func _setup_grenade_counter() -> void:
 	_grenade_label.offset_right = -20.0
 	_grenade_label.offset_bottom = -104.0
 	_grenade_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_grenade_label.text = "✚ 0"
+	_grenade_label.text = "💣 0"
 	_grenade_label.add_theme_font_size_override("font_size", 24)
 	_grenade_label.add_theme_color_override("font_color", Color(0.55, 0.9, 0.55, 1))
 	_grenade_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
@@ -106,7 +106,7 @@ func _setup_grenade_counter() -> void:
 
 func _on_grenades_changed(count: int) -> void:
 	if _grenade_label:
-		_grenade_label.text = "✚ %d  [G]" % count
+		_grenade_label.text = "💣 %d  [G]" % count
 
 func _setup_scope() -> void:
 	var shader: Shader = load("res://shaders/scope.gdshader")

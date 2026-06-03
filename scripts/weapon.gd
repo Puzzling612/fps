@@ -67,8 +67,11 @@ func _build_defs() -> void:
 	var ar := WeaponDef.new()
 	ar.id = "ar"; ar.display_name = "ASSAULT RIFLE"
 	ar.damage = 25; ar.fire_interval = 0.1
-	ar.magazine_size = 120; ar.max_reserve = 360; ar.max_reserve_cap = 600
-	ar.reload_time = 2.0; ar.pellets = 1; ar.spread_deg = 0.6; ar.range = 120.0
+	# mag 30 + reload 0.5 keeps the SAME avg fire rate as the old 120-mag/2.0s
+	# reload (8.57 rounds/s); reserve bumped 240→330 so total starting ammo
+	# (360) is unchanged — pure feel change, identical firepower & economy.
+	ar.magazine_size = 30; ar.max_reserve = 330; ar.max_reserve_cap = 480
+	ar.reload_time = 0.5; ar.pellets = 1; ar.spread_deg = 0.6; ar.range = 120.0
 	ar.auto = true; ar.recoil_scale = 1.0; ar.unlock_wave = 1
 	ar.ads_fov = 55.0               # moderate hipfire→ADS zoom
 	ar.falloff_start = 35.0; ar.falloff_end = 80.0; ar.falloff_min = 0.7
@@ -76,7 +79,7 @@ func _build_defs() -> void:
 	var sg := WeaponDef.new()
 	sg.id = "shotgun"; sg.display_name = "SHOTGUN"
 	sg.damage = 34; sg.fire_interval = 0.8
-	sg.magazine_size = 12; sg.max_reserve = 72; sg.max_reserve_cap = 192
+	sg.magazine_size = 12; sg.max_reserve = 48; sg.max_reserve_cap = 132
 	sg.reload_time = 2.6; sg.pellets = 8; sg.spread_deg = 5.0; sg.range = 40.0
 	sg.auto = false; sg.recoil_scale = 2.6; sg.unlock_wave = 3
 	# Full damage out to 5m, then drops off → close-range one-shot weapon.
@@ -85,7 +88,7 @@ func _build_defs() -> void:
 	var sn := WeaponDef.new()
 	sn.id = "sniper"; sn.display_name = "SNIPER"
 	sn.damage = 150; sn.fire_interval = 1.2
-	sn.magazine_size = 10; sn.max_reserve = 50; sn.max_reserve_cap = 120
+	sn.magazine_size = 10; sn.max_reserve = 32; sn.max_reserve_cap = 80
 	sn.reload_time = 3.0; sn.pellets = 1; sn.spread_deg = 0.05; sn.range = 200.0
 	sn.auto = false; sn.ads_fov = 16.0; sn.recoil_scale = 3.4; sn.unlock_wave = 5
 	sn.scoped = true                # circular scope UI + high zoom
@@ -94,7 +97,7 @@ func _build_defs() -> void:
 	var smg := WeaponDef.new()
 	smg.id = "smg"; smg.display_name = "SMG"
 	smg.damage = 16; smg.fire_interval = 0.066
-	smg.magazine_size = 40; smg.max_reserve = 160; smg.max_reserve_cap = 400
+	smg.magazine_size = 40; smg.max_reserve = 105; smg.max_reserve_cap = 260
 	smg.reload_time = 1.8; smg.pellets = 1; smg.spread_deg = 2.2; smg.range = 80.0
 	smg.auto = true; smg.recoil_scale = 0.6; smg.unlock_wave = 7
 	smg.falloff_start = 18.0; smg.falloff_end = 45.0; smg.falloff_min = 0.5

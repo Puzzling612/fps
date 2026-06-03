@@ -2,11 +2,11 @@ extends Node3D
 
 @export var enemy_scene: PackedScene
 @export var base_enemy_count: int = 5
-@export var per_round_increment: int = 1
-@export var max_concurrent: int = 4
+@export var per_round_increment: int = 1     # count still scales, but density was too punishing at 2
+@export var max_concurrent: int = 3          # was 4 — match the on-screen count to player kill-rate (~0.5/s)
 @export var base_spawn_interval: float = 2.5
-@export var min_spawn_interval: float = 0.6
-@export var interval_decay_per_round: float = 0.15
+@export var min_spawn_interval: float = 1.0  # was 0.5 — replacements must arrive SLOWER than the player kills, so a kill actually relieves pressure
+@export var interval_decay_per_round: float = 0.1   # was 0.2 — keep spawn interval (~2s mid-game) above player TTK
 @export var round_break_time: float = 4.0
 @export var first_round_delay: float = 2.0
 
@@ -43,11 +43,12 @@ func _current_interval() -> float:
 	var r = max(1, GameManager.current_round)
 	return max(min_spawn_interval, base_spawn_interval - (r - 1) * interval_decay_per_round)
 
-# C-lever: once stats plateau, pressure scales by putting more enemies on screen
-# at once. +1 concurrent every 3 waves, capped at 10.
+# Primary difficulty lever: enemy stats are fixed, so pressure scales by putting
+# more enemies on screen at once. +1 concurrent every 4 waves, capped at 7 —
+# the on-screen count drives incoming DPS, so this is kept gentle.
 func _current_max_concurrent() -> int:
 	var r = max(1, GameManager.current_round)
-	return min(7, max_concurrent + int(floor((r - 1) / 4.0)))
+	return min(6, max_concurrent + int(floor((r - 1) / 4.0)))
 
 func _start_next_round() -> void:
 	var n = GameManager.current_round + 1

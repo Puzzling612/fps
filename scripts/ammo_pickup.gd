@@ -1,6 +1,6 @@
 extends Area3D
 
-@export var ammo_amount: int = 30
+@export var ammo_amount: int = 20
 @export var rotate_speed: float = 1.8
 @export var bob_amplitude: float = 0.12
 @export var bob_speed: float = 2.2

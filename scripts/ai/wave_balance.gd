@@ -4,16 +4,22 @@ class_name WaveBalance
 extends RefCounted
 
 # ── Static per-wave formulas ──
-static func enemy_hp(w: int) -> int:
-	# Ramps early, then plateaus at 220 by ~wave 9. Past that, difficulty comes
-	# from enemy count / type mix (see enemy_spawner), not bullet-sponge HP.
-	return mini(220, 100 + 15 * (w - 1))
+static func enemy_hp(_w: int) -> int:
+	# FIXED across all waves. Difficulty comes from enemy count / density
+	# (see enemy_spawner), never from bullet-sponge HP. 200 here means after
+	# type multipliers the toughest enemy is 200 HP — well under a sniper
+	# headshot (150 × 3.0 = 450), so a scoped headshot one-shots ANY enemy.
+	return 200
 
 # A single enemy's threat is FIXED across all waves — damage, fire rate and
 # accuracy never scale. Difficulty rises only through enemy COUNT (the spawner)
 # and the shrinking heal packs below.
 static func enemy_dmg(_w: int) -> int:
-	return 11
+	# 3: compensates for the leaner heal economy (heal 20, fewer/spread packs →
+	# throughput ~4.2→2.0 DPS). At dmg 3 worst-case incoming ~7.6 DPS, so net
+	# pressure (~5.6 DPS) matches the previously-good balance. max_concurrent is
+	# left alone — its kill-rate↔respawn balance is what makes kills relieve heat.
+	return 3
 
 static func enemy_interval(_w: int) -> float:
 	return 0.95
@@ -21,12 +27,16 @@ static func enemy_interval(_w: int) -> float:
 static func enemy_spread(_w: int) -> float:
 	return 3.5
 
-static func heal_amount(w: int) -> int:
-	# The difficulty lever: heals get weaker as the waves climb.
-	return clampi(int(round(48.0 - 2.0 * (w - 1))), 22, 48)
+static func heal_amount(_w: int) -> int:
+	# Fixed at 20. Light top-up only; combined with fewer, spread-out packs this
+	# keeps heal throughput ~2 DPS so survival comes from cover + kills, not
+	# pickup circuits. enemy_dmg is balanced against this (see enemy_dmg).
+	return 20
 
-static func headshot_mult(w: int) -> float:
-	return 3.0 + 0.1 * floori((w - 1) / 3.0)
+static func headshot_mult(_w: int) -> float:
+	# FIXED. A headshot always deals 3× — combined with fixed 200 HP this
+	# guarantees a sniper headshot (450) one-shots every enemy at any wave.
+	return 3.0
 
 # Distance damage falloff: full to 8m, down to 50% past ~48m.
 static func falloff(dist: float) -> float:

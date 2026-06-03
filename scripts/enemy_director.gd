@@ -10,8 +10,13 @@ extends Node
 @export var reassign_interval: float = 0.5
 @export var ladder_base: Vector3 = Vector3(-15.0, 0.5, -30.0)  # ladder approach
 @export var watchtower_top: Vector3 = Vector3(-18.0, 8.3, -30.0)
-@export var objective_reassign_interval: float = 3.0
-@export var min_enemies_before_objective: int = 1
+@export var objective_reassign_interval: float = 8.0
+@export var min_enemies_before_objective: int = 3
+# The tower is a situational option, not a magnet. Only worth taking when the
+# player is far enough that high ground gives a real sightline edge.
+@export var tower_min_player_dist: float = 16.0
+@export var tower_max_player_dist: float = 80.0
+@export var nonmarksman_tower_chance: float = 0.25
 
 @export var profiler_tick_interval: float = 0.2
 @export var debug_profile_log: bool = false
@@ -174,13 +179,23 @@ func _reassign_slots() -> void:
 func _try_assign_objective() -> void:
 	if _objective_enemy != null and _objective_enemy.get_ref():
 		return  # someone is already pursuing the objective
+	var player = GameManager.player
+	if not is_instance_valid(player):
+		return
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	if enemies.size() < min_enemies_before_objective:
 		return
-	# Marksmen (type 2) belong on the high ground — send one up first if present;
-	# otherwise fall back to whoever is nearest the tower.
+	# Situational gate: high ground only pays off when the player is at range. If
+	# they're hugging the tower (or way off the map), don't bother peeling anyone off.
+	var pdist: float = (player as Node3D).global_position.distance_to(watchtower_top)
+	if pdist < tower_min_player_dist or pdist > tower_max_player_dist:
+		return
+	# Marksmen (type 2) belong on the high ground — send one up if present. Other
+	# types only commit occasionally, so the tower stays an option, not a magnet.
 	var best: Node = _nearest_tower_candidate(enemies, true)
 	if best == null:
+		if randf() > nonmarksman_tower_chance:
+			return
 		best = _nearest_tower_candidate(enemies, false)
 	if best == null:
 		return
