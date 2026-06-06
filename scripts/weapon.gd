@@ -70,7 +70,7 @@ func _build_defs() -> void:
 	# mag 30 + reload 0.5 keeps the SAME avg fire rate as the old 120-mag/2.0s
 	# reload (8.57 rounds/s); reserve bumped 240→330 so total starting ammo
 	# (360) is unchanged — pure feel change, identical firepower & economy.
-	ar.magazine_size = 30; ar.max_reserve = 330; ar.max_reserve_cap = 480
+	ar.magazine_size = 30; ar.max_reserve = 240; ar.max_reserve_cap = 480
 	ar.reload_time = 0.5; ar.pellets = 1; ar.spread_deg = 0.6; ar.range = 120.0
 	ar.auto = true; ar.recoil_scale = 1.0; ar.unlock_wave = 1
 	ar.ads_fov = 55.0               # moderate hipfire→ADS zoom
@@ -326,7 +326,24 @@ func add_ammo(amount: int) -> void:
 	reserve[def.id] = min(def.max_reserve_cap, reserve[def.id] + amount)
 	_emit_ammo()
 
-# Ammo pickups top up the whole arsenal, not just the equipped weapon.
+# Typed ammo pickup: tops up ONLY the matching weapon's reserve. Colored crates
+# (red=ar, orange=shotgun, blue=sniper, green=smg) call this, so the player
+# must collect the right type for the gun they're using.
+func add_ammo_to(id: String, amount: int) -> void:
+	if amount <= 0 or not reserve.has(id):
+		return
+	var def: WeaponDef = null
+	for d in defs:
+		if d.id == id:
+			def = d
+			break
+	if def == null:
+		return
+	reserve[id] = min(def.max_reserve_cap, reserve[id] + amount)
+	if id == current_def().id:
+		_emit_ammo()
+
+# Tops up the whole arsenal (kept for any non-typed pickup / debug use).
 func add_ammo_all(amount: int) -> void:
 	if amount <= 0: return
 	for d in defs:

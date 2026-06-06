@@ -30,14 +30,8 @@ extends CharacterBody3D
 # When the player gets very close, enemies ditch the gun and swing — faster than
 # shooting and no line-of-sight needed.
 @export var melee_range: float = 2.5
-@export var melee_damage: int = 10
+@export var melee_damage: int = 20
 @export var melee_interval: float = 0.8
-
-# Held weapon meshes (built in code, attached to the body). Gun is always shown;
-# the knife only appears during a melee swing.
-var _gun_node: Node3D = null
-var _knife_node: Node3D = null
-var _enemy_swinging: bool = false
 
 # ─── Enemy types ─────────────────────────────────────────────
 enum EnemyType { NORMAL, RUSHER, MARKSMAN, GRENADIER }
@@ -50,6 +44,7 @@ var state: State = State.APPROACH
 
 var health: int
 var _dead: bool = false
+var _dying: bool = false   # death animation playing; AI frozen until node frees
 var attack_cooldown: float = 0.0
 var strafe_dir: int = 1
 var strafe_timer: float = 0.0
@@ -121,8 +116,16 @@ func _ready() -> void:
 	_flash_material.emission_energy_multiplier = 2.0
 
 	if model:
-		_collect_meshes(model)
+		# Flash/tint only the body skin, not the held weapon. The model exposes its
+		# body meshes via all_meshes; collecting the whole subtree would also grab the
+		# weapon meshes, which get freed/rebuilt by _assign_weapon_visual() below —
+		# leaving dangling references that crash on the next hit-flash.
+		if "all_meshes" in model and not model.all_meshes.is_empty():
+			_model_meshes = model.all_meshes
+		else:
+			_collect_meshes(model)
 	_apply_type_visuals()
+	_assign_weapon_visual()
 
 	if hp_sprite and hp_subviewport:
 		hp_sprite.texture = hp_subviewport.get_texture()
@@ -130,38 +133,8 @@ func _ready() -> void:
 		hp_progress.max_value = max_health
 		hp_progress.value = max_health
 
-	_build_held_weapons()
-
-# Build a simple gun (always held) + a knife (shown only mid-swing), parented to
-# the body so they track the enemy's facing via look_at.
-func _build_held_weapons() -> void:
-	var metal := StandardMaterial3D.new()
-	metal.albedo_color = Color(0.09, 0.09, 0.11); metal.metallic = 0.6; metal.roughness = 0.4
-
-	_gun_node = Node3D.new()
-	add_child(_gun_node)
-	_gun_node.position = Vector3(0.28, 0.15, -0.30)   # right hand, chest height, forward (-z)
-	var body := MeshInstance3D.new()
-	var bm := BoxMesh.new(); bm.size = Vector3(0.09, 0.13, 0.46)
-	body.mesh = bm; body.material_override = metal; body.position = Vector3(0, 0, -0.08)
-	_gun_node.add_child(body)
-	var barrel := MeshInstance3D.new()
-	var cm := CylinderMesh.new(); cm.top_radius = 0.024; cm.bottom_radius = 0.024
-	cm.height = 0.4; cm.radial_segments = 8
-	barrel.mesh = cm; barrel.material_override = metal
-	barrel.rotation = Vector3(deg_to_rad(90), 0, 0); barrel.position = Vector3(0, 0.02, -0.4)
-	_gun_node.add_child(barrel)
-
-	var blade_mat := StandardMaterial3D.new()
-	blade_mat.albedo_color = Color(0.72, 0.74, 0.8); blade_mat.metallic = 0.95; blade_mat.roughness = 0.22
-	_knife_node = Node3D.new()
-	add_child(_knife_node)
-	_knife_node.position = Vector3(0.28, 0.22, -0.30)
-	var blade := MeshInstance3D.new()
-	var kbm := BoxMesh.new(); kbm.size = Vector3(0.03, 0.07, 0.36)
-	blade.mesh = kbm; blade.material_override = blade_mat; blade.position = Vector3(0, 0, -0.2)
-	_knife_node.add_child(blade)
-	_knife_node.visible = false
+	# The rifle is now built and held in the model's right hand (see enemy_model.gd);
+	# no body-parented weapon meshes here.
 
 func _collect_meshes(node: Node) -> void:
 	if node is MeshInstance3D:
@@ -171,7 +144,8 @@ func _collect_meshes(node: Node) -> void:
 
 func _apply_flash(on: bool) -> void:
 	for mi in _model_meshes:
-		mi.material_override = _flash_material if on else _base_override
+		if is_instance_valid(mi):
+			mi.material_override = _flash_material if on else _base_override
 
 # Tint + scale the model so each type reads at a glance.
 func _apply_type_visuals() -> void:
@@ -191,6 +165,16 @@ func _apply_type_visuals() -> void:
 	if model:
 		model.scale *= scl
 
+# Give each type a fitting held-weapon mesh: Rushers a shotgun, Marksmen a
+# scoped rifle, everyone else the default rifle.
+func _assign_weapon_visual() -> void:
+	if model == null or not model.has_method("set_weapon"):
+		return
+	match enemy_type:
+		EnemyType.RUSHER:   model.set_weapon("shotgun")
+		EnemyType.MARKSMAN: model.set_weapon("sniper")
+		_:                  model.set_weapon("rifle")
+
 # ─── Configuration (called by spawner before add_child) ──────
 func configure(w: int, t: int, _d: float) -> void:
 	# _d (DDA difficulty) is intentionally ignored: per-enemy threat is fixed.
@@ -208,8 +192,12 @@ func configure(w: int, t: int, _d: float) -> void:
 			preferred_distance = 2.5
 			min_distance = 1.0
 			attack_range = 14.0
-			attack_damage = int(round(attack_damage * 1.3))
-			attack_interval *= 0.7
+			# Fires a shotgun (_shoot_shotgun) instead of using attack_damage; the
+			# spread + falloff there set its threat. Pump-action cadence: ~1.2 s.
+			attack_interval = 1.2
+			# Rushers hit hard in melee — getting hugged is a real panic (40 / 0.8 s
+			# = 50 DPS). Lower toward 30 if Rusher swarms feel unfair.
+			melee_damage = 40
 		EnemyType.MARKSMAN:
 			max_health = int(max_health * 0.9)
 			move_speed *= 0.9
@@ -258,6 +246,14 @@ func _orient_hp_bar() -> void:
 	hp_bar.look_at(cam.global_position, Vector3.UP)
 
 func _physics_process(delta: float) -> void:
+	# Dying: AI is frozen while the death animation plays; only gravity applies.
+	if _dying:
+		velocity.x = 0; velocity.z = 0
+		if is_on_floor(): velocity.y = 0
+		else: velocity.y -= gravity * delta
+		move_and_slide()
+		return
+
 	if flash_t > 0.0:
 		flash_t -= delta
 		if flash_t <= 0.0:
@@ -307,6 +303,8 @@ func _physics_process(delta: float) -> void:
 		elif distance_p <= minf(attack_range, aggro_radius) and _has_line_of_sight(player):
 			if enemy_type == EnemyType.GRENADIER:
 				_throw_grenade(player)
+			elif enemy_type == EnemyType.RUSHER:
+				_shoot_shotgun(player)
 			else:
 				_shoot_at(player)
 			attack_cooldown = attack_interval
@@ -326,6 +324,17 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= gravity * delta
 
 	move_and_slide()
+
+	# Drive body animation from how we're actually moving, split into body-local
+	# forward / sideways so a strafe plays the side-step clip instead of a walk.
+	# Standing still → the model holds the rifle aimed at the player ("aim" idle).
+	if model and model.has_method("set_locomotion"):
+		var v := Vector2(velocity.x, velocity.z)
+		var fwd := -global_transform.basis.z
+		var right := global_transform.basis.x
+		var fwd_speed := Vector2(fwd.x, fwd.z).dot(v)
+		var lat_speed := Vector2(right.x, right.z).dot(v)
+		model.set_locomotion(v.length(), fwd_speed, lat_speed)
 
 # ─── State logic ─────────────────────────────────────────────
 func _get_profile() -> PlayerProfile:
@@ -629,6 +638,54 @@ func _has_line_of_sight(player: Node) -> bool:
 	if r.is_empty(): return true
 	return r.collider == player
 
+# ─── Shotgun (Rusher) ─────────────────────────────────────────
+# Balance (see chat derivation): 8 pellets, 12 total damage at point-blank,
+# 1.2 s interval → ~10 DPS peak at ≤3 m, falling to ~0 by 13 m. Geometric hit
+# fraction ≈ (target_angular_radius / spread)², so damage drops off sharply with
+# distance even before the linear range falloff — a true get-close-or-nothing gun.
+const SHOTGUN_PELLETS := 8
+const SHOTGUN_DAMAGE_TOTAL := 12.0     # summed across all pellets, before falloff
+const SHOTGUN_SPREAD_DEG := 10.0
+const SHOTGUN_FULL_RANGE := 3.0        # full damage within this distance
+const SHOTGUN_ZERO_RANGE := 13.0       # zero damage beyond this distance
+
+func _shotgun_falloff(dist: float) -> float:
+	return clampf((SHOTGUN_ZERO_RANGE - dist) / (SHOTGUN_ZERO_RANGE - SHOTGUN_FULL_RANGE), 0.0, 1.0)
+
+func _shoot_shotgun(player: Node) -> void:
+	var from: Vector3 = global_position + Vector3(0, 1.2, 0)
+	var target: Vector3 = (player as Node3D).global_position + Vector3(0, 0.3, 0)
+	var dir: Vector3 = (target - from).normalized()
+	var falloff: float = _shotgun_falloff(from.distance_to(target))
+	var per_pellet: float = SHOTGUN_DAMAGE_TOTAL / float(SHOTGUN_PELLETS)
+
+	var spread: float = deg_to_rad(SHOTGUN_SPREAD_DEG)
+	var basis_z: Vector3 = -dir
+	var basis_x: Vector3 = Vector3.UP.cross(basis_z).normalized()
+	if basis_x.length() < 0.01: basis_x = Vector3.RIGHT
+	var basis_y: Vector3 = basis_z.cross(basis_x).normalized()
+
+	var space := get_world_3d().direct_space_state
+	var ex := _shot_exclusions()
+	var total_dmg: float = 0.0
+	for i in SHOTGUN_PELLETS:
+		var rx: float = randf_range(-spread, spread)
+		var ry: float = randf_range(-spread, spread)
+		var pd: Vector3 = (-basis_z + basis_x * tan(rx) + basis_y * tan(ry)).normalized()
+		var end: Vector3 = from + pd * attack_range
+		var q := PhysicsRayQueryParameters3D.create(from, end)
+		q.exclude = ex
+		var r := space.intersect_ray(q)
+		var hit_point: Vector3 = end
+		if not r.is_empty():
+			hit_point = r.position
+			if r.collider == player and player.has_method("take_damage"):
+				total_dmg += per_pellet * falloff
+		# A tracer per pellet sells the spread of a shotgun blast.
+		GameManager.weapon_fired.emit(from, hit_point, false, false)
+	if total_dmg > 0.0 and player.has_method("take_damage"):
+		player.take_damage(int(round(total_dmg)), false, from)
+
 func _shoot_at(player: Node) -> void:
 	var from: Vector3 = global_position + Vector3(0, 1.2, 0)
 	# Aim at the player's chest. The player capsule is centered on its origin
@@ -665,28 +722,8 @@ func _shoot_at(player: Node) -> void:
 func _melee_attack_player(player: Node) -> void:
 	if player.has_method("take_damage"):
 		player.take_damage(melee_damage, false, global_position)
-	_swing_knife()
-
-# Quick knife slash: hide the gun, sweep the knife, then restore the gun. Tween
-# is on the knife's local rotation; look_at only drives the body's yaw.
-func _swing_knife() -> void:
-	if _knife_node == null or _enemy_swinging:
-		return
-	_enemy_swinging = true
-	if _gun_node:
-		_gun_node.visible = false
-	_knife_node.visible = true
-	_knife_node.rotation = Vector3(deg_to_rad(45), 0, deg_to_rad(35))
-	var tw := create_tween()
-	tw.tween_property(_knife_node, "rotation",
-		Vector3(deg_to_rad(-35), 0, deg_to_rad(-25)), 0.12).set_ease(Tween.EASE_OUT)
-	tw.tween_interval(0.06)
-	tw.tween_callback(func() -> void:
-		if is_instance_valid(_knife_node):
-			_knife_node.visible = false
-		if is_instance_valid(_gun_node):
-			_gun_node.visible = true
-		_enemy_swinging = false)
+	if model and model.has_method("play_melee"):
+		model.play_melee()
 
 func _throw_grenade(player: Node) -> void:
 	var from: Vector3 = global_position + Vector3(0, 1.4, 0)
@@ -736,4 +773,30 @@ func take_damage(amount: int, is_headshot: bool = false) -> void:
 		GameManager.enemy_killed.emit(is_headshot)
 		get_tree().call_group("enemy_spawner", "_on_enemy_died")
 		get_tree().call_group("ai_director", "report_kill")
-		queue_free()
+		_start_dying()
+
+# Play the death animation, then remove the body. Scoring/among-counts have
+# already fired in take_damage, so the kill registers instantly; only the node
+# lingers briefly to let the ragdoll-style death clip play out.
+func _start_dying() -> void:
+	_dying = true
+	# Stop bullets / the player from interacting with the corpse.
+	collision_layer = 0
+	var head_area := get_node_or_null("HeadArea")
+	if head_area:
+		head_area.set_deferred("monitorable", false)
+		head_area.set_deferred("monitoring", false)
+	if hp_bar:
+		hp_bar.visible = false
+	if model and model.has_method("play_death"):
+		model.play_death()
+	# Show the collapse briefly, then sink + fade out and remove the body.
+	get_tree().create_timer(1.1).timeout.connect(_finish_death)
+
+func _finish_death() -> void:
+	if not is_instance_valid(self):
+		return
+	var t := create_tween()
+	if model:
+		t.tween_property(model, "scale", model.scale * 0.01, 0.3).set_ease(Tween.EASE_IN)
+	t.tween_callback(queue_free)

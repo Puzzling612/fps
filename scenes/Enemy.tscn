@@ -1,7 +1,7 @@
 [gd_scene load_steps=9 format=3]
 
 [ext_resource path="res://scripts/enemy.gd" type="Script" id="Script_3"]
-[ext_resource path="res://assets/enemy_model.glb" type="PackedScene" id="Model_GLB"]
+[ext_resource path="res://scripts/enemy_model.gd" type="Script" id="Model_Script"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_Enemy"]
 radius = 0.5
@@ -51,8 +51,9 @@ path_max_distance = 4.0
 radius = 0.6
 max_speed = 6.0
 
-[node name="Model" parent="." instance=ExtResource("Model_GLB")]
-transform = Transform3D(0.842, 0, 0, 0, 0.842, 0, 0, 0, 0.842, 0, -0.8, 0)
+[node name="Model" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, -0.8, 0)
+script = ExtResource("Model_Script")
 
 [node name="HeadArea" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.72, 0)

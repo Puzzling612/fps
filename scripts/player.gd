@@ -20,7 +20,8 @@ extends CharacterBody3D
 var grenades: int = 3
 
 # ─── Melee (V) ───
-@export var melee_damage: int = 200      # close-range payoff: one-shots any enemy (max HP 200)
+@export var melee_damage: int = 50       # close-range chip damage; full-HP enemies take 4 swings,
+                                         # weak Rushers (120 HP) take 3 — melee is a finisher, not a one-shot
 @export var melee_range: float = 3.0
 @export var melee_cooldown: float = 0.6
 @export var melee_cone_dot: float = 0.5  # ~60° forward cone for the swing
