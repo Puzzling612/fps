@@ -96,7 +96,6 @@ func exit_ladder() -> void:
 @onready var hp_progress: ProgressBar = $HPBar/SubViewport/ProgressBar
 @onready var nav_agent: NavigationAgent3D = $NavAgent
 
-var _cached_camera: Camera3D = null
 var _shot_excl_cache: Array[RID] = []
 var _shot_excl_dirty: bool = true
 
@@ -137,6 +136,7 @@ func _ready() -> void:
 	if hp_progress:
 		hp_progress.max_value = max_health
 		hp_progress.value = max_health
+		_refresh_hp_bar()
 
 	# The rifle is now built and held in the model's right hand (see enemy_model.gd);
 	# no body-parented weapon meshes here.
@@ -236,20 +236,13 @@ func clear_objective() -> void:
 	has_objective = false
 
 # ─── Process ─────────────────────────────────────────────────
-func _process(delta: float) -> void:
-	_orient_hp_bar()
-	if hp_progress and _displayed_hp > float(health):
-		_displayed_hp = max(float(health), _displayed_hp - hp_lerp_speed * delta)
-		hp_progress.value = _displayed_hp
-
-func _orient_hp_bar() -> void:
-	if not hp_bar: return
-	if not is_instance_valid(_cached_camera):
-		_cached_camera = get_viewport().get_camera_3d()
-	if not _cached_camera: return
-	var to_cam = _cached_camera.global_position - hp_bar.global_position
-	if Vector3(to_cam.x, 0, to_cam.z).length() < 0.001: return
-	hp_bar.look_at(_cached_camera.global_position, Vector3.UP)
+# The HP-bar Sprite3D billboards itself on the GPU (billboard = 1 in the scene),
+# so no per-frame look_at is needed. The SubViewport renders on demand only — we
+# kick a single re-render via _refresh_hp_bar() whenever the value changes, instead
+# of UPDATE_ALWAYS re-rendering every enemy's viewport every frame.
+func _refresh_hp_bar() -> void:
+	if hp_subviewport:
+		hp_subviewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 func _physics_process(delta: float) -> void:
 	# Dying: AI is frozen while the death animation plays; only gravity applies.
@@ -765,6 +758,7 @@ func take_damage(amount: int, is_headshot: bool = false) -> void:
 	_displayed_hp = float(health)
 	if hp_progress:
 		hp_progress.value = _displayed_hp
+		_refresh_hp_bar()   # re-render the on-demand viewport for this one change
 	flash_t = 0.08
 	_apply_flash(true)
 	# Trigger evasion sidestep
