@@ -96,6 +96,10 @@ func exit_ladder() -> void:
 @onready var hp_progress: ProgressBar = $HPBar/SubViewport/ProgressBar
 @onready var nav_agent: NavigationAgent3D = $NavAgent
 
+var _cached_camera: Camera3D = null
+var _shot_excl_cache: Array[RID] = []
+var _shot_excl_dirty: bool = true
+
 var _flash_material: StandardMaterial3D
 var _base_override: StandardMaterial3D = null
 var _model_meshes: Array[MeshInstance3D] = []
@@ -108,6 +112,7 @@ func _ready() -> void:
 	strafe_dir = 1 if randf() < 0.5 else -1
 	strafe_timer = randf_range(strafe_change_interval_min, strafe_change_interval_max)
 	_build_behavior_tree()
+	GameManager.enemy_killed.connect(_on_enemy_killed_invalidate_cache)
 
 	_flash_material = StandardMaterial3D.new()
 	_flash_material.albedo_color = Color(1, 1, 1, 1)
@@ -239,11 +244,12 @@ func _process(delta: float) -> void:
 
 func _orient_hp_bar() -> void:
 	if not hp_bar: return
-	var cam = get_viewport().get_camera_3d()
-	if not cam: return
-	var to_cam = cam.global_position - hp_bar.global_position
+	if not is_instance_valid(_cached_camera):
+		_cached_camera = get_viewport().get_camera_3d()
+	if not _cached_camera: return
+	var to_cam = _cached_camera.global_position - hp_bar.global_position
 	if Vector3(to_cam.x, 0, to_cam.z).length() < 0.001: return
-	hp_bar.look_at(cam.global_position, Vector3.UP)
+	hp_bar.look_at(_cached_camera.global_position, Vector3.UP)
 
 func _physics_process(delta: float) -> void:
 	# Dying: AI is frozen while the death animation plays; only gravity applies.
@@ -338,10 +344,10 @@ func _physics_process(delta: float) -> void:
 
 # ─── State logic ─────────────────────────────────────────────
 func _get_profile() -> PlayerProfile:
-	if _director == null or not is_instance_valid(_director):
+	if not is_instance_valid(_director):
 		var ds := get_tree().get_nodes_in_group("ai_director")
 		_director = ds[0] if ds.size() > 0 else null
-	if _director and is_instance_valid(_director):
+	if is_instance_valid(_director):
 		return _director.current_profile
 	return null
 
@@ -619,14 +625,18 @@ func _should_jump() -> bool:
 
 # ─── Combat ──────────────────────────────────────────────────
 # RIDs to ignore when shooting / checking sight: ourself plus every other enemy.
-# Friendlies clustered around the player must NOT block fire — otherwise a ranged
-# enemy (marksman) is forever shooting allies in the back and never hits the player.
+# Cached and only rebuilt when the enemy roster changes.
+func _on_enemy_killed_invalidate_cache(_is_headshot: bool) -> void:
+	_shot_excl_dirty = true
+
 func _shot_exclusions() -> Array[RID]:
-	var ex: Array[RID] = [get_rid()]
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e is CollisionObject3D and e != self:
-			ex.append((e as CollisionObject3D).get_rid())
-	return ex
+	if _shot_excl_dirty:
+		_shot_excl_dirty = false
+		_shot_excl_cache = [get_rid()]
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e is CollisionObject3D and e != self:
+				_shot_excl_cache.append((e as CollisionObject3D).get_rid())
+	return _shot_excl_cache
 
 func _has_line_of_sight(player: Node) -> bool:
 	var from: Vector3 = global_position + Vector3(0, 1.2, 0)
