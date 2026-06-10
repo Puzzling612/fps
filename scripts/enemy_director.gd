@@ -139,11 +139,35 @@ func _reassign_slots() -> void:
 		view_forward = Vector3.FORWARD
 	view_forward = view_forward.normalized()
 
-	# Build slot positions around the player
+	# Anticipation: center the encirclement ring slightly ahead of the player,
+	# toward the profiler's predicted position — a moving player runs INTO the
+	# net instead of away from it. Confidence-gated so early-game rings stay
+	# honest (centered on the player).
+	var ring_center: Vector3 = player_pos
+	var conf: float = current_profile.confidence()
+	if conf > 0.1 and shared_predicted_pos != Vector3.ZERO:
+		var ahead := shared_predicted_pos
+		ahead.y = player_pos.y
+		# Cap the lead so a bad prediction can't drag the ring absurdly far.
+		var lead := (ahead - player_pos).limit_length(slot_radius * 0.5)
+		ring_center = player_pos + lead * (0.6 * conf)
+
+	# Habitual-route direction: the player's hottest heatmap zone. Slots that sit
+	# between the player and that zone get tagged "flank" (sprint + cutoff) so the
+	# squad camps the route the player keeps falling back to.
+	var hot_dir := Vector3.ZERO
+	if not shared_hot_zones.is_empty():
+		var to_hot: Vector3 = shared_hot_zones[0] - player_pos
+		to_hot.y = 0
+		# Only meaningful when the hot zone isn't the spot the player is standing on.
+		if to_hot.length() > slot_radius * 0.5:
+			hot_dir = to_hot.normalized()
+
+	# Build slot positions around the (anticipated) ring center
 	var slots: Array[Vector3] = []
 	for i in slot_count:
 		var ang: float = TAU * float(i) / float(slot_count)
-		slots.append(player_pos + Vector3(cos(ang) * slot_radius, 0, sin(ang) * slot_radius))
+		slots.append(ring_center + Vector3(cos(ang) * slot_radius, 0, sin(ang) * slot_radius))
 
 	# Only consider enemies that have NO active objective AND aren't already perched
 	# high up (watchtower occupants stay there and shoot — no need to encircle).
@@ -173,6 +197,11 @@ func _reassign_slots() -> void:
 			var dir_to_slot: Vector3 = to_slot.normalized() if to_slot.length() > 0.001 else Vector3.FORWARD
 			var dot: float = view_forward.dot(dir_to_slot)
 			var role: String = "flank" if dot < -0.15 else "encircle"
+			# Heatmap cutoff: a slot sitting on the player's habitual route is a
+			# flank position too, even if it's in front of their view — the point
+			# is to be waiting there when they rotate back to it.
+			if role == "encircle" and hot_dir != Vector3.ZERO and hot_dir.dot(dir_to_slot) > 0.7:
+				role = "flank"
 			best.assign_slot(slot, role)
 
 # ─── Watchtower objective ───────────────────────────────────

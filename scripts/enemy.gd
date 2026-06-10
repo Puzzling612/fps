@@ -181,8 +181,10 @@ func _assign_weapon_visual() -> void:
 		_:                  model.set_weapon("rifle")
 
 # ─── Configuration (called by spawner before add_child) ──────
-func configure(w: int, t: int, _d: float) -> void:
-	# _d (DDA difficulty) is intentionally ignored: per-enemy threat is fixed.
+func configure(w: int, t: int, d: float) -> void:
+	# d = DDA difficulty from the director, ∈ [0.75, 1.15]. It scales accuracy
+	# and fire cadence only (applied at the end, after type overrides) — HP and
+	# per-hit damage stay fixed so kill feel / TTK never turns spongy.
 	enemy_type = t
 	max_health = WaveBalance.enemy_hp(w)
 	attack_damage = WaveBalance.enemy_dmg(w)
@@ -221,6 +223,13 @@ func configure(w: int, t: int, _d: float) -> void:
 			attack_interval = maxf(2.4, attack_interval * 2.4)
 			# Slow lobbed attack, but each grenade now lands a heavier blast.
 			attack_damage = int(round(attack_damage * 1.8))
+
+	# ── DDA (after type overrides so every type scales) ──
+	# Struggling player (d<1): wider spread, slower shots. Dominating (d>1):
+	# tighter spread, faster cadence. At the clamps this is roughly ±15-30%.
+	d = clampf(d, 0.75, 1.15)
+	aim_spread_deg /= d
+	attack_interval *= (2.0 - d)
 
 # ─── Director API ────────────────────────────────────────────
 func assign_slot(pos: Vector3, new_role: String) -> void:
