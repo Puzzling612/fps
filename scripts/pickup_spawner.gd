@@ -20,15 +20,22 @@ var _check_timer: float = 0.5
 var _unlock_sig: String = ""   # signature of unlocked weapon set; recolour on change
 
 func _ready() -> void:
-	for child in get_children():
-		if child is Marker3D:
-			spawn_points.append(child)
-	# Defer initial spawn until the scene tree is settled
-	call_deferred("_initial_spawn")
+	# Pickup points are created by the LevelBuilder into group "pickup_point".
+	# Collect deferred (after the builder has registered them), then spawn.
+	call_deferred("_collect_and_spawn")
 	# When a new weapon unlocks (new round), re-colour existing crates so the new
 	# ammo type appears immediately instead of waiting for crates to be collected.
 	if not GameManager.round_started.is_connected(_on_round_started):
 		GameManager.round_started.connect(_on_round_started)
+
+func _collect_and_spawn() -> void:
+	for n in get_tree().get_nodes_in_group("pickup_point"):
+		if n is Node3D and not spawn_points.has(n):
+			spawn_points.append(n)
+	for child in get_children():
+		if child is Marker3D and not spawn_points.has(child):
+			spawn_points.append(child)
+	_initial_spawn()
 
 func _initial_spawn() -> void:
 	for i in ammo_target_count:

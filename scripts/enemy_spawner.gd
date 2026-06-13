@@ -19,10 +19,20 @@ var break_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("enemy_spawner")
-	for child in get_children():
-		if child is Node3D:
-			spawn_points.append(child)
 	break_timer = first_round_delay
+	# Spawn points are created by the LevelBuilder into group "enemy_spawn".
+	# Collect deferred so the builder (and any tscn markers) have registered first.
+	call_deferred("_collect_spawn_points")
+
+func _collect_spawn_points() -> void:
+	spawn_points.clear()
+	for n in get_tree().get_nodes_in_group("enemy_spawn"):
+		if n is Node3D:
+			spawn_points.append(n)
+	# Fallback: any Node3D children placed directly under the spawner in the scene.
+	for child in get_children():
+		if child is Node3D and not spawn_points.has(child):
+			spawn_points.append(child)
 
 func _process(delta: float) -> void:
 	if GameManager.is_game_over:

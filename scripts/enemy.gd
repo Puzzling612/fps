@@ -74,6 +74,7 @@ const NO_TARGET := Vector3(1.0e30, 0.0, 0.0)
 var slot_position: Vector3 = NO_TARGET
 var objective_position: Vector3 = NO_TARGET
 var has_objective: bool = false
+var _objective_climb: bool = false
 var role: String = "encircle"   # encircle | flank | objective
 
 # Ladder state (set by ladder.gd via enter/exit_ladder)
@@ -236,10 +237,15 @@ func assign_slot(pos: Vector3, new_role: String) -> void:
 	slot_position = pos
 	role = new_role
 
-func assign_objective(pos: Vector3) -> void:
+func assign_objective(pos: Vector3, climb: bool = false) -> void:
 	objective_position = pos
 	has_objective = true
 	role = "objective"
+	# climb=true → objective is a ladder base; arrival hands off to the ladder
+	# (exit_ladder clears it at the top). climb=false → a ground waypoint (e.g. a
+	# flank-route mouth or a walkable high ground); arrival clears it so the enemy
+	# rejoins combat from the new position.
+	_objective_climb = climb
 
 func clear_objective() -> void:
 	has_objective = false
@@ -474,7 +480,12 @@ func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, de
 		State.GOTO_OBJECTIVE:
 			var to_obj := objective_position - global_position
 			to_obj.y = 0
-			if to_obj.length() < 0.5:
+			if to_obj.length() < 1.0:
+				# Ground waypoint (flank mouth / walkable high ground): arrival done →
+				# drop the objective and fight from here. Ladder objectives keep it so
+				# the climb (and exit_ladder at the top) can finish.
+				if not _objective_climb:
+					clear_objective()
 				return Vector3.ZERO
 			return _nav_dir(objective_position, sprint_speed)
 		State.APPROACH:
