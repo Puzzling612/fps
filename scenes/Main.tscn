@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://scripts/pickup_spawner.gd" id="ExtScr_PickupSpawner"]
 [ext_resource type="Script" path="res://scripts/nav_baker.gd" id="ExtScr_NavBaker"]
 [ext_resource type="Script" path="res://scripts/level_builder.gd" id="ExtScr_LevelBuilder"]
+[ext_resource type="Script" path="res://scripts/touch_controls.gd" id="ExtScr_Touch"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.34, 0.46, 0.68, 1)
@@ -86,3 +87,6 @@ min_distance_between = 9.0
 [node name="Player" parent="." instance=ExtResource("ExtPS_Player")]
 
 [node name="HUD" parent="." instance=ExtResource("ExtPS_HUD")]
+
+[node name="TouchControls" type="CanvasLayer" parent="."]
+script = ExtResource("ExtScr_Touch")

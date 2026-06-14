@@ -27,10 +27,16 @@ var is_game_over: bool = false
 var is_won: bool = false
 var player: Node = null
 
+# True on touch devices (phones / mobile web). Set once at startup; gameplay
+# scripts read it to swap mouse-capture gating for on-screen touch controls.
+# Desktop stays false → every touch-related branch is a no-op there.
+var touch_mode: bool = false
+
 var _hitstop_t: float = 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	touch_mode = DisplayServer.is_touchscreen_available() or ("--touch" in OS.get_cmdline_args())
 	# Hitstop fires only on a KILL, never on every hit — otherwise fast-firing
 	# weapons (SMG/AR) would stutter constantly while spraying a target.
 	enemy_killed.connect(_on_enemy_killed_hitstop)
