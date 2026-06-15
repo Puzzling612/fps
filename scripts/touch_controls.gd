@@ -32,6 +32,11 @@ func _ready() -> void:
 		hide()
 		set_process_input(false)
 		return
+	# Touch generates an emulated LEFT mouse click for every tap/drag. Since "shoot"
+	# is bound to the left mouse button, that made look-drag fire the gun. Strip the
+	# action's input bindings on touch — the FIRE button drives it via action_press()
+	# (binding-independent), so firing still works but stray touches no longer shoot.
+	InputMap.action_erase_events("shoot")
 	_build_ui()
 	get_viewport().size_changed.connect(_layout)
 	_layout()

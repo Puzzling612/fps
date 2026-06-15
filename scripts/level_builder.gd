@@ -1,39 +1,37 @@
-# level_builder.gd — parametric tactical arena builder (compact redesign).
+# level_builder.gd — parametric URBAN tactical arena (PUBG-style interiors).
 #
-# Builds ALL level geometry procedurally in _ready(), plus the marker nodes the
-# game systems consume:
-#   - group "enemy_spawn"    : enemy spawn points (read by enemy_spawner)
-#   - group "pickup_point"   : pickup spots         (read by pickup_spawner)
-#   - group "tactical_points": tagged map landmarks (read by enemy_director)
-#
-# Geometry is StaticBody3D + CollisionShape3D + MeshInstance3D so the runtime
+# Builds ALL level geometry in _ready() + the marker nodes the game reads:
+#   - group "enemy_spawn"    : enemy spawn points   (enemy_spawner)
+#   - group "pickup_point"   : pickup spots          (pickup_spawner)
+#   - group "tactical_points": tagged landmarks      (enemy_director)
+# Geometry = StaticBody3D + CollisionShape3D + MeshInstance3D so the runtime
 # NavMesh (parsed from STATIC COLLIDERS) bakes over it. Builder runs synchronously
 # in _ready(); NavBaker bakes deferred, so geometry exists first.
 #
-# Layout: a COMPACT ~52x52 arena built for constant, readable fights —
-#   • central courtyard hub (player start, deliberate cover lanes)
-#   • The Keep: a close northern high ground over the courtyard, one ramp (choke)
-#   • The Perch: a ladder tower at the south, long sightline across the courtyard
-#   • two flank corridors hugging the courtyard (east/west) whose mouths let
-#     enemies emerge behind a camped player.
+# Layout: a ~68x68 urban block — central plaza, two crossing avenues, four
+# quadrant buildings, perimeter ring/alleys. Two HERO buildings have real PUBG
+# interiors: multiple rooms (doorways), windows (shoot/peek ports), and an
+# interior ramp up to a 2F loft (perch high ground). Enemies enter via the doors
+# and climb the interior ramp to contest the loft, exactly like the player.
 # Compass: -Z north, +Z south, -X west, +X east. Player starts at origin.
 extends Node3D
 
 const LADDER_SCRIPT := preload("res://scripts/ladder.gd")
-
-# Reachable high-ground surfaces. Both > 5.0 so enemy.gd perch logic engages.
-const KEEP_FLOOR_Y := 5.5
-const TOWER_FLOOR_Y := 7.0
+const LOFT_Y := 5.5          # 2F loft surface (>5.0 → enemy perch logic engages)
+const WALL_H := 5.0          # building exterior/interior wall height (loft sits above)
 
 var mat: Dictionary = {}
 
 func _ready() -> void:
 	_make_materials()
 	_build_ground_and_perimeter()
-	_build_keep()
-	_build_tower()
-	_build_flank_corridors()
-	_build_courtyard_cover()
+	_build_avenues()
+	_hero_building(-19.0, -19.0, "nw")   # NW apartments (loft high ground)
+	_hero_building(19.0, 19.0, "se")     # SE office (loft high ground)
+	_shed(19.0, -19.0)                   # NE warehouse (clear/cover)
+	_shed(-19.0, 19.0)                   # SW market (clear/cover)
+	_build_plaza_cover()
+	_build_street_cover()
 	_build_lamps()
 	_place_enemy_spawns()
 	_place_pickups()
@@ -42,6 +40,7 @@ func _ready() -> void:
 # ─── Materials ───────────────────────────────────────────────
 func _make_materials() -> void:
 	mat["grass"] = _mk(Color(0.28, 0.36, 0.22), 1.0, 0.0)
+	mat["road"] = _mk(Color(0.30, 0.30, 0.33), 0.95, 0.0)
 	mat["concrete"] = _mk(Color(0.72, 0.70, 0.66), 0.85, 0.0)
 	mat["concrete_dark"] = _mk(Color(0.42, 0.42, 0.45), 0.78, 0.0)
 	mat["metal"] = _mk(Color(0.30, 0.36, 0.42), 0.35, 0.7)
@@ -49,6 +48,7 @@ func _make_materials() -> void:
 	mat["tile"] = _mk(Color(0.84, 0.80, 0.72), 0.55, 0.0)
 	mat["wood"] = _mk(Color(0.50, 0.32, 0.18), 0.9, 0.0)
 	mat["brick"] = _mk(Color(0.52, 0.28, 0.22), 0.85, 0.0)
+	mat["brick2"] = _mk(Color(0.46, 0.42, 0.38), 0.85, 0.0)
 
 func _mk(c: Color, rough: float, metal: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -76,7 +76,55 @@ func _solid(p_name: String, center: Vector3, size: Vector3, mat_key: String) -> 
 	add_child(body)
 	return body
 
-# Sloped walkable ramp connecting two surface points (base → top).
+# Visual-only flat quad (thin; collision is harmless/flush, walkable).
+func _decal(p_name: String, center: Vector3, size: Vector3, mat_key: String) -> void:
+	var mi := MeshInstance3D.new()
+	mi.name = p_name
+	var bm := BoxMesh.new()
+	bm.size = size
+	bm.material = mat.get(mat_key)
+	mi.mesh = bm
+	mi.position = center
+	add_child(mi)
+
+# Wall along an axis with doorway gaps left open.
+# axis "x": wall varies along X at fixed Z. axis "z": varies along Z at fixed X.
+# gaps: Array[Vector2(gap_lo, gap_hi)] in axis coords (sorted, within [lo,hi]).
+func _wall_with_gaps(p_name: String, axis: String, fixed: float, lo: float, hi: float, gaps: Array, h: float, mat_key: String, thick: float = 0.4) -> void:
+	var edges: Array = [lo]
+	for g in gaps:
+		edges.append(g.x)
+		edges.append(g.y)
+	edges.append(hi)
+	var i := 0
+	while i + 1 < edges.size():
+		var a: float = edges[i]
+		var b: float = edges[i + 1]
+		if b - a > 0.05:
+			var c := (a + b) * 0.5
+			var l := b - a
+			if axis == "x":
+				_solid(p_name, Vector3(c, h * 0.5, fixed), Vector3(l, h, thick), mat_key)
+			else:
+				_solid(p_name, Vector3(fixed, h * 0.5, c), Vector3(thick, h, l), mat_key)
+		i += 2
+
+# Wall with a continuous horizontal window slot: solid sill (0..1.0) + header
+# (2.2..h). The Y[1.0,2.2] gap passes bullets/sightlines; the 1.0 sill (> nav
+# max_climb 0.6) blocks walking — so windows are firing ports, not passages.
+func _window_wall(p_name: String, axis: String, fixed: float, lo: float, hi: float, h: float, mat_key: String, thick: float = 0.4) -> void:
+	var c := (lo + hi) * 0.5
+	var l := hi - lo
+	var sill := 1.0
+	var lintel := 2.2
+	if axis == "x":
+		_solid(p_name, Vector3(c, sill * 0.5, fixed), Vector3(l, sill, thick), mat_key)
+		_solid(p_name, Vector3(c, (lintel + h) * 0.5, fixed), Vector3(l, h - lintel, thick), mat_key)
+	else:
+		_solid(p_name, Vector3(fixed, sill * 0.5, c), Vector3(thick, sill, l), mat_key)
+		_solid(p_name, Vector3(fixed, (lintel + h) * 0.5, c), Vector3(thick, h - lintel, l), mat_key)
+
+# Sloped walkable ramp connecting base → top.
 func _ramp_between(p_name: String, base: Vector3, top: Vector3, width: float, mat_key: String) -> void:
 	var delta := top - base
 	var length := delta.length()
@@ -106,28 +154,6 @@ func _ramp_between(p_name: String, base: Vector3, top: Vector3, width: float, ma
 	body.transform = Transform3D(Basis(xb, yb, zb), center)
 	add_child(body)
 
-# Climbable ladder: Area3D (ladder.gd) on the access face + two visual rails.
-func _ladder(p_name: String, area_center: Vector3, area_size: Vector3) -> void:
-	var area := Area3D.new()
-	area.name = p_name
-	area.set_script(LADDER_SCRIPT)
-	var col := CollisionShape3D.new()
-	var shp := BoxShape3D.new()
-	shp.size = area_size
-	col.shape = shp
-	area.add_child(col)
-	area.position = area_center
-	add_child(area)
-	var half := area_size.z * 0.5 - 0.1
-	for off in [half, -half]:
-		var rail := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(0.1, area_size.y, 0.1)
-		bm.material = mat.get("wood")
-		rail.mesh = bm
-		rail.position = area_center + Vector3(0, 0, off)
-		add_child(rail)
-
 # ─── Markers ─────────────────────────────────────────────────
 func _marker(group: String, pos: Vector3) -> Node3D:
 	var m := Marker3D.new()
@@ -138,97 +164,106 @@ func _marker(group: String, pos: Vector3) -> Node3D:
 
 func _tactical(pos: Vector3, kind: String, zone: String, access: Vector3 = Vector3(1e30, 0, 0), climb: bool = false) -> void:
 	var m := _marker("tactical_points", pos)
-	m.set_meta("kind", kind)        # HIGH_GROUND | FLANK_ENTRY | CHOKE | OBJECTIVE
+	m.set_meta("kind", kind)
 	m.set_meta("zone", zone)
-	m.set_meta("access", access)    # ground approach (ladder/ramp base) used to reach it
-	m.set_meta("climb", climb)      # true → reached by ladder; false → walkable (ramp)
+	m.set_meta("access", access)
+	m.set_meta("climb", climb)
 
-# ─── Ground & perimeter ──────────────────────────────────────
+# ─── Ground / perimeter / avenues ────────────────────────────
 func _build_ground_and_perimeter() -> void:
-	_solid("Ground", Vector3(0, -0.5, 0), Vector3(56, 1, 56), "grass")
-	var h := 8.0
-	_solid("WallN", Vector3(0, h * 0.5, -26), Vector3(56, h, 1), "concrete_dark")
-	_solid("WallS", Vector3(0, h * 0.5, 26), Vector3(56, h, 1), "concrete_dark")
-	_solid("WallE", Vector3(26, h * 0.5, 0), Vector3(1, h, 56), "concrete_dark")
-	_solid("WallW", Vector3(-26, h * 0.5, 0), Vector3(1, h, 56), "concrete_dark")
+	_solid("Ground", Vector3(0, -0.5, 0), Vector3(72, 1, 72), "grass")
+	var h := 9.0
+	_solid("WallN", Vector3(0, h * 0.5, -34), Vector3(72, h, 1), "concrete_dark")
+	_solid("WallS", Vector3(0, h * 0.5, 34), Vector3(72, h, 1), "concrete_dark")
+	_solid("WallE", Vector3(34, h * 0.5, 0), Vector3(1, h, 72), "concrete_dark")
+	_solid("WallW", Vector3(-34, h * 0.5, 0), Vector3(1, h, 72), "concrete_dark")
 
-# ─── The Keep (north high ground, overlooks the courtyard) ───
-# A raised bunker reached by ONE front ramp (the contested chokepoint). Parapet
-# with a central merlon + window gaps facing the courtyard.
-func _build_keep() -> void:
-	var cz := -17.0
-	_solid("KeepFloor", Vector3(0, KEEP_FLOOR_Y - 0.25, cz), Vector3(16, 0.5, 10), "concrete")
-	for sx in [-6.0, 6.0]:
-		for sz in [cz + 3.0, cz - 3.0]:
-			_solid("KeepPillar", Vector3(sx, KEEP_FLOOR_Y * 0.5, sz), Vector3(1.2, KEEP_FLOOR_Y, 1.2), "concrete_dark")
-	# Front ramp from courtyard up to the south edge (Z=-12), landing at X=5.
-	_ramp_between("KeepRamp", Vector3(5, -0.05, -2.0), Vector3(5, KEEP_FLOOR_Y, -12.5), 5.0, "concrete")
-	# Parapet (1.2 above floor). South keeps only a central merlon; the X=5 ramp
-	# landing stays open.
-	var py := KEEP_FLOOR_Y + 0.6
-	_solid("KeepParN", Vector3(0, py, cz - 4.7), Vector3(16, 1.2, 0.5), "concrete")
-	_solid("KeepParE", Vector3(7.7, py, cz), Vector3(0.5, 1.2, 10), "concrete")
-	_solid("KeepParW", Vector3(-7.7, py, cz), Vector3(0.5, 1.2, 10), "concrete")
-	_solid("KeepParS", Vector3(0, py, cz + 4.7), Vector3(6, 1.2, 0.5), "concrete")
-	# Ground-floor cover under the platform.
-	_solid("KeepCoverA", Vector3(0, 0.85, cz + 1.0), Vector3(4, 1.7, 0.6), "rust")
-	_solid("KeepCoverB", Vector3(-4, 0.85, cz - 2.0), Vector3(0.6, 1.7, 4), "rust")
+func _build_avenues() -> void:
+	# Visual road strips for readable flow (flush to ground).
+	_decal("AveNS", Vector3(0, 0.02, 0), Vector3(11, 0.04, 68), "road")
+	_decal("AveEW", Vector3(0, 0.02, 0), Vector3(68, 0.04, 11), "road")
 
-# ─── The Perch (south ladder tower, long courtyard sightline) ─
-func _build_tower() -> void:
-	var tx := -12.0
-	var tz := 19.0
-	_solid("TowerFloor", Vector3(tx, TOWER_FLOOR_Y - 0.2, tz), Vector3(4.5, 0.4, 4.5), "concrete")
-	for lx in [tx - 1.8, tx + 1.8]:
-		for lz in [tz - 1.8, tz + 1.8]:
-			_solid("TowerLeg", Vector3(lx, TOWER_FLOOR_Y * 0.5, lz), Vector3(0.5, TOWER_FLOOR_Y, 0.5), "metal")
-	var py := TOWER_FLOOR_Y + 0.5
-	_solid("TowerParS", Vector3(tx, py, tz + 2.05), Vector3(4.5, 1.0, 0.4), "metal")
-	_solid("TowerParE", Vector3(tx + 2.05, py, tz), Vector3(0.4, 1.0, 4.5), "metal")
-	_solid("TowerParW", Vector3(tx - 2.05, py, tz), Vector3(0.4, 1.0, 4.5), "metal")
-	# Ladder on the north face (toward the courtyard).
-	_ladder("TowerLadder", Vector3(tx, TOWER_FLOOR_Y * 0.5 + 0.5, tz - 2.7), Vector3(1.4, TOWER_FLOOR_Y + 1.0, 1.4))
+# ─── HERO building (PUBG-style: rooms, windows, interior ramp → 2F loft) ──
+func _hero_building(cx: float, cz: float, _zone: String) -> void:
+	var hx := 8.0
+	var hz := 7.0
+	var x0 := cx - hx
+	var x1 := cx + hx
+	var z0 := cz - hz
+	var z1 := cz + hz
+	# Exterior walls (h=WALL_H). Doors on S/E/W (multi-entry), windows on N.
+	_wall_with_gaps("HB_S", "x", z1, x0, x1, [Vector2(cx - 1.75, cx + 1.75)], WALL_H, "brick")
+	_wall_with_gaps("HB_E", "z", x1, z0, z1, [Vector2(cz - 1.75, cz + 1.75)], WALL_H, "brick")
+	_wall_with_gaps("HB_W", "z", x0, z0, z1, [Vector2(cz - 1.75, cz + 1.75)], WALL_H, "brick")
+	_window_wall("HB_N", "x", z0, x0, x1, WALL_H, "brick")
+	# Interior wall splitting N/S rooms; CENTER doorway aligned with the central ramp.
+	_wall_with_gaps("HB_Int", "x", cz, x0, x1, [Vector2(cx - 2.5, cx + 2.5)], WALL_H, "brick2")
+	# Ground-floor cover (room clearing), kept off the central ramp lane.
+	_solid("HB_CoverN", Vector3(cx + 5, 0.9, cz - 4), Vector3(1.6, 1.8, 1.6), "wood")
+	_solid("HB_CoverS", Vector3(cx + 4, 0.5, cz + 3), Vector3(3, 1.0, 0.5), "rust")
+	# Interior ramp up the building's CENTER axis (X=cx): the S door, ramp and 2F
+	# loft are all aligned, with 8m clear to the E/W walls — so the nav agent walks
+	# straight in and up without snagging a wall corner.
+	_ramp_between("HB_Ramp", Vector3(cx, 0.0, cz + 4), Vector3(cx, LOFT_Y, cz - 3), 3.5, "concrete")
+	# 2F loft (north side, centered, 8×4), above the 5.0 walls → sightlines over the
+	# street. Parapet on N (street) + E/W edges; S edge open where the ramp lands.
+	_solid("HB_Loft", Vector3(cx, LOFT_Y - 0.2, cz - 5), Vector3(8, 0.4, 4), "concrete")
+	_solid("HB_LoftParN", Vector3(cx, LOFT_Y + 0.5, cz - 7), Vector3(8, 1.0, 0.4), "metal")
+	_solid("HB_LoftParE", Vector3(cx + 4, LOFT_Y + 0.5, cz - 5), Vector3(0.4, 1.0, 4), "metal")
+	_solid("HB_LoftParW", Vector3(cx - 4, LOFT_Y + 0.5, cz - 5), Vector3(0.4, 1.0, 4), "metal")
 
-# ─── Flank corridors (hug the courtyard, mouths feed behind player) ──
-func _build_flank_corridors() -> void:
+# ─── SHED (single-story clear/cover space, multi-entry, open top) ────────
+func _shed(cx: float, cz: float) -> void:
+	var hx := 8.0
+	var hz := 7.0
+	var x0 := cx - hx
+	var x1 := cx + hx
+	var z0 := cz - hz
+	var z1 := cz + hz
 	var h := 4.0
-	# West screen wall at X=-16, gaps at Z[-6,-2] and Z[10,14].
-	_solid("WAlleyA", Vector3(-16, h * 0.5, -15), Vector3(0.6, h, 18), "brick")  # Z[-24,-6]
-	_solid("WAlleyB", Vector3(-16, h * 0.5, 4), Vector3(0.6, h, 12), "brick")    # Z[-2,10]
-	_solid("WAlleyC", Vector3(-16, h * 0.5, 19), Vector3(0.6, h, 10), "brick")   # Z[14,24]
-	_solid("WAlleyCrate", Vector3(-21, 0.9, 0), Vector3(1.6, 1.8, 1.6), "rust")
-	# East screen wall at X=16 (mirror).
-	_solid("EAlleyA", Vector3(16, h * 0.5, -15), Vector3(0.6, h, 18), "brick")
-	_solid("EAlleyB", Vector3(16, h * 0.5, 4), Vector3(0.6, h, 12), "brick")
-	_solid("EAlleyC", Vector3(16, h * 0.5, 19), Vector3(0.6, h, 10), "brick")
-	_solid("EAlleyCrate", Vector3(21, 0.9, 0), Vector3(1.6, 1.8, 1.6), "rust")
+	# Doors on the two plaza-facing sides; windows on the outer two.
+	var south_door := [Vector2(cx - 2.0, cx + 2.0)]
+	var west_door := [Vector2(cz - 2.0, cz + 2.0)]
+	_wall_with_gaps("SH_S", "x", z1, x0, x1, south_door, h, "brick2")
+	_wall_with_gaps("SH_W", "z", x0, z0, z1, west_door, h, "brick2")
+	_window_wall("SH_N", "x", z0, x0, x1, h, "brick2")
+	_window_wall("SH_E", "z", x1, z0, z1, h, "brick2")
+	# Interior shelving / stalls as cover.
+	_solid("SH_Shelf1", Vector3(cx - 2, 0.9, cz - 3), Vector3(5, 1.8, 0.6), "wood")
+	_solid("SH_Shelf2", Vector3(cx + 3, 0.9, cz + 1), Vector3(0.6, 1.8, 5), "wood")
+	_solid("SH_Crate", Vector3(cx - 3, 0.75, cz + 3), Vector3(1.5, 1.5, 1.5), "rust")
 
-# ─── Courtyard cover (intentional lanes, not scatter) ────────
-func _build_courtyard_cover() -> void:
-	# Two crate chevrons framing the central lane (full cover).
-	for c in [Vector3(-7, 0.9, -2), Vector3(-9, 0.9, 1), Vector3(-7, 0.9, 4)]:
-		_solid("CrateW", c, Vector3(1.8, 1.8, 1.8), "wood")
-	for c in [Vector3(7, 0.9, -2), Vector3(9, 0.9, 1), Vector3(7, 0.9, 4)]:
-		_solid("CrateE", c, Vector3(1.8, 1.8, 1.8), "wood")
-	# Low firing walls (lean-over cover) forming lanes.
-	_solid("LowN", Vector3(0, 0.5, -6), Vector3(5, 1.0, 0.5), "concrete")     # faces the keep
-	_solid("LowSW", Vector3(-4, 0.5, 11), Vector3(0.5, 1.0, 5), "concrete")
-	_solid("LowSE", Vector3(4, 0.5, 11), Vector3(0.5, 1.0, 5), "concrete")
-	# Tall pillars flanking the central lane.
-	_solid("PillarL", Vector3(-3, 1.5, 3), Vector3(0.8, 3.0, 0.8), "concrete_dark")
-	_solid("PillarR", Vector3(3, 1.5, 3), Vector3(0.8, 3.0, 0.8), "concrete_dark")
-	# Central monument (sightline break; origin stays clear).
-	_solid("Monument", Vector3(0, 0.8, 8), Vector3(3, 1.6, 3), "tile")
-	# Cover anchoring each flank mouth so emerging fights have something to hold.
-	_solid("MouthW", Vector3(-12, 0.9, 8), Vector3(1.6, 1.8, 1.6), "wood")
-	_solid("MouthE", Vector3(12, 0.9, 8), Vector3(1.6, 1.8, 1.6), "wood")
+# ─── Plaza & street cover (cover-to-cover) ───────────────────
+func _build_plaza_cover() -> void:
+	_solid("Kiosk", Vector3(0, 1.25, 3), Vector3(3, 2.5, 3), "tile")        # central sightline break
+	_solid("PlanterA", Vector3(-5, 0.5, -2), Vector3(3, 1.0, 1.2), "concrete")
+	_solid("PlanterB", Vector3(5, 0.5, 4), Vector3(3, 1.0, 1.2), "concrete")
+	_solid("PlazaCrate1", Vector3(-3, 0.75, 6), Vector3(1.5, 1.5, 1.5), "wood")
+	_solid("PlazaCrate2", Vector3(4, 0.75, -4), Vector3(1.5, 1.5, 1.5), "wood")
+
+func _build_street_cover() -> void:
+	# Staggered cover along the avenues for cover-to-cover advances.
+	var spots := [
+		Vector3(0, 0.5, -16), Vector3(-3, 0.75, -22), Vector3(3, 0.5, -28),     # N avenue
+		Vector3(0, 0.5, 16), Vector3(3, 0.75, 22), Vector3(-3, 0.5, 28),        # S avenue
+		Vector3(-16, 0.5, 0), Vector3(-22, 0.75, 3), Vector3(-28, 0.5, -3),     # W avenue
+		Vector3(16, 0.5, 0), Vector3(22, 0.75, -3), Vector3(28, 0.5, 3),        # E avenue
+	]
+	var i := 0
+	for s in spots:
+		if int(s.y * 100) == 75:   # the y=0.75 ones are crates (full cover)
+			_solid("StCrate%d" % i, s, Vector3(1.5, 1.5, 1.5), "rust")
+		else:                       # y=0.5 ones are low walls (lean-over)
+			var sz := Vector3(3.5, 1.0, 0.5) if absf(s.x) < absf(s.z) else Vector3(0.5, 1.0, 3.5)
+			_solid("StWall%d" % i, s, sz, "concrete")
+		i += 1
 
 # ─── Lamps ───────────────────────────────────────────────────
 func _build_lamps() -> void:
-	for p in [Vector3(10, 4, 6), Vector3(-10, 4, 6), Vector3(10, 4, -10), Vector3(-10, 4, -10)]:
-		_lamp(p, Color(1.0, 0.85, 0.6), 15.0, 2.0)
-	_lamp(Vector3(0, 5, -17), Color(0.8, 0.85, 1.0), 14.0, 2.5)   # over the keep
-	_lamp(Vector3(-12, 8, 19), Color(0.7, 0.85, 1.0), 11.0, 3.0)  # over the tower
+	for p in [Vector3(8, 5, 8), Vector3(-8, 5, 8), Vector3(8, 5, -8), Vector3(-8, 5, -8)]:
+		_lamp(p, Color(1.0, 0.85, 0.6), 16.0, 2.0)
+	_lamp(Vector3(-23, 6, -23), Color(0.8, 0.85, 1.0), 16.0, 2.2)   # over hero NW
+	_lamp(Vector3(23, 6, 23), Color(0.8, 0.85, 1.0), 16.0, 2.2)     # over hero SE
 
 func _lamp(pos: Vector3, color: Color, rng: float, energy: float) -> void:
 	var l := OmniLight3D.new()
@@ -240,43 +275,44 @@ func _lamp(pos: Vector3, color: Color, rng: float, energy: float) -> void:
 
 # ─── Marker placement ────────────────────────────────────────
 func _place_enemy_spawns() -> void:
-	# All ~22-26m from origin so the first wave engages in ~5-6s; the alley-end
-	# spawns feed the flank corridors.
 	var pts := [
-		Vector3(-22, 0.5, -22), Vector3(-22, 0.5, 22),   # west corridor ends
-		Vector3(22, 0.5, -22), Vector3(22, 0.5, 22),      # east corridor ends
-		Vector3(0, 0.5, -24), Vector3(-6, 0.5, -24),      # behind the keep
-		Vector3(-24, 0.5, 2), Vector3(24, 0.5, 2),        # perimeter mid
+		Vector3(0, 0.5, -32), Vector3(0, 0.5, 32),       # N/S avenue ends
+		Vector3(-32, 0.5, 0), Vector3(32, 0.5, 0),        # W/E avenue ends
+		Vector3(-16, 0.5, -32), Vector3(16, 0.5, -32),    # north alley mouths
+		Vector3(-16, 0.5, 32), Vector3(16, 0.5, 32),      # south alley mouths
+		Vector3(-32, 0.5, 16), Vector3(32, 0.5, -16),     # ring road
 	]
 	for p in pts:
 		_marker("enemy_spawn", p)
 
 func _place_pickups() -> void:
 	var pts := [
-		Vector3(0, 0.7, 8), Vector3(-8, 0.7, -2), Vector3(8, 0.7, 2),   # courtyard
-		Vector3(0, KEEP_FLOOR_Y + 0.2, -17), Vector3(5, KEEP_FLOOR_Y + 0.2, -19),  # keep 2F
-		Vector3(-12, TOWER_FLOOR_Y + 0.2, 19),                          # tower top
-		Vector3(-21, 0.7, -10), Vector3(-21, 0.7, 14),                  # west corridor
-		Vector3(21, 0.7, -10), Vector3(21, 0.7, 14),                    # east corridor
-		Vector3(0, 0.7, -22),                                           # behind keep
-		Vector3(8, 0.7, 22),                                            # south
+		Vector3(0, 0.7, 6), Vector3(-6, 0.7, -3), Vector3(6, 0.7, 3),     # plaza
+		Vector3(-19, LOFT_Y + 0.2, -24), Vector3(19, LOFT_Y + 0.2, 14),  # hero lofts (centered on north side)
+		Vector3(-19, 0.7, -16), Vector3(19, 0.7, 16),                    # hero interiors
+		Vector3(19, 0.7, -19), Vector3(-19, 0.7, 19),                    # shed interiors
+		Vector3(0, 0.7, -24), Vector3(0, 0.7, 24),                       # avenues
+		Vector3(-28, 0.7, 0), Vector3(28, 0.7, 0),                       # avenue ends
+		Vector3(-30, 0.7, -30),                                          # ring corner
 	]
 	for p in pts:
 		_marker("pickup_point", p)
 
 func _place_tactical_points() -> void:
-	# High grounds. Keep = walkable ramp (objective is the platform); Tower =
-	# ladder (objective is its base).
-	_tactical(Vector3(0, KEEP_FLOOR_Y, -17), "HIGH_GROUND", "keep", Vector3(5, 0.5, -2), false)
-	_tactical(Vector3(-12, TOWER_FLOOR_Y, 19), "HIGH_GROUND", "tower", Vector3(-12, 0.5, 15), true)
-	_tactical(Vector3(-12, TOWER_FLOOR_Y, 19), "OBJECTIVE", "tower", Vector3(-12, 0.5, 15), true)
-	# Flank entries: courtyard-side mouths of the concealed corridors; access =
-	# the corridor's far (spawn) end so the picked enemy routes through the lane.
-	_tactical(Vector3(-15, 0.5, -4), "FLANK_ENTRY", "west", Vector3(-22, 0.5, -22))
-	_tactical(Vector3(-15, 0.5, 12), "FLANK_ENTRY", "west", Vector3(-22, 0.5, 22))
-	_tactical(Vector3(15, 0.5, -4), "FLANK_ENTRY", "east", Vector3(22, 0.5, -22))
-	_tactical(Vector3(15, 0.5, 12), "FLANK_ENTRY", "east", Vector3(22, 0.5, 22))
-	_tactical(Vector3(0, 0.5, -11), "FLANK_ENTRY", "keep", Vector3(0, 0.5, -24))
+	# Hero lofts = high grounds reached by the interior ramp (walkable → climb=false,
+	# objective is the loft point; nav routes door→room→ramp→loft). access = in
+	# front of the building's south door.
+	_tactical(Vector3(-19, LOFT_Y, -24), "HIGH_GROUND", "nw", Vector3(-19, 0.5, -10), false)
+	_tactical(Vector3(19, LOFT_Y, 14), "HIGH_GROUND", "se", Vector3(19, 0.5, 10), false)
+	_tactical(Vector3(-19, LOFT_Y, -24), "OBJECTIVE", "nw", Vector3(-19, 0.5, -10), false)
+	# Flank entries: building side doors + alley mouths near the plaza. access =
+	# a far point so the picked enemy routes the long concealed way around.
+	_tactical(Vector3(-11, 0.5, -19), "FLANK_ENTRY", "nw", Vector3(-32, 0.5, 0))   # NW east door
+	_tactical(Vector3(11, 0.5, 19), "FLANK_ENTRY", "se", Vector3(32, 0.5, 0))      # SE west door
+	_tactical(Vector3(11, 0.5, -19), "FLANK_ENTRY", "ne", Vector3(32, 0.5, 0))     # NE west door
+	_tactical(Vector3(-11, 0.5, 19), "FLANK_ENTRY", "sw", Vector3(-32, 0.5, 0))    # SW east door
+	_tactical(Vector3(0, 0.5, -14), "FLANK_ENTRY", "north", Vector3(0, 0.5, -32))  # north avenue
+	_tactical(Vector3(0, 0.5, 14), "FLANK_ENTRY", "south", Vector3(0, 0.5, 32))    # south avenue
 	# Chokepoints
-	_tactical(Vector3(5, 0.5, -2), "CHOKE", "keep")
-	_tactical(Vector3(-12, 0.5, 15), "CHOKE", "tower")
+	_tactical(Vector3(-19, 0.5, -12), "CHOKE", "nw")
+	_tactical(Vector3(19, 0.5, 12), "CHOKE", "se")

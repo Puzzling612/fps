@@ -480,7 +480,11 @@ func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, de
 		State.GOTO_OBJECTIVE:
 			var to_obj := objective_position - global_position
 			to_obj.y = 0
-			if to_obj.length() < 1.0:
+			# Require matching HEIGHT too, so a walkable high-ground objective (a 2F
+			# loft reached by a ramp) isn't "arrived" while standing on the ground
+			# under it — keep navigating up the ramp until actually at loft height.
+			var at_height: bool = absf(global_position.y - objective_position.y) < 1.5
+			if to_obj.length() < 1.0 and at_height:
 				# Ground waypoint (flank mouth / walkable high ground): arrival done →
 				# drop the objective and fight from here. Ladder objectives keep it so
 				# the climb (and exit_ladder at the top) can finish.
