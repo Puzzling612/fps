@@ -617,7 +617,16 @@ func _direct_dir(dest: Vector3, speed: float) -> Vector3:
 	return d.normalized() * speed
 
 # ─── Movement helpers ────────────────────────────────────────
+# Raycast throttles: re-evaluating these every frame for every enemy is the main
+# per-enemy CPU cost. Caching to a few times per second is imperceptible in play
+# but lets us put many more enemies on screen.
+var _jump_next_ms: float = 0.0
+
 func _should_jump() -> bool:
+	var now := float(Time.get_ticks_msec())
+	if now < _jump_next_ms:
+		return false
+	_jump_next_ms = now + 200.0
 	var forward := -global_transform.basis.z
 	forward.y = 0.0
 	if forward.length() < 0.001: return false
@@ -655,15 +664,22 @@ func _shot_exclusions() -> Array[RID]:
 				_shot_excl_cache.append((e as CollisionObject3D).get_rid())
 	return _shot_excl_cache
 
+var _los_cache: bool = false
+var _los_next_ms: float = 0.0
+
 func _has_line_of_sight(player: Node) -> bool:
+	var now := float(Time.get_ticks_msec())
+	if now < _los_next_ms:
+		return _los_cache
+	_los_next_ms = now + 150.0
 	var from: Vector3 = global_position + Vector3(0, 1.2, 0)
 	var to: Vector3 = (player as Node3D).global_position + Vector3(0, 0.3, 0)
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(from, to)
 	q.exclude = _shot_exclusions()
 	var r := space.intersect_ray(q)
-	if r.is_empty(): return true
-	return r.collider == player
+	_los_cache = r.is_empty() or r.collider == player
+	return _los_cache
 
 # ─── Shotgun (Rusher) ─────────────────────────────────────────
 # Balance (see chat derivation): 8 pellets, 12 total damage at point-blank,

@@ -21,6 +21,11 @@ const LOFT_Y := 5.5          # 2F loft surface (>5.0 → enemy perch logic engag
 const WALL_H := 5.0          # building exterior/interior wall height (loft sits above)
 
 var mat: Dictionary = {}
+# Per-material SurfaceTool buffers. Every visual box is appended here and the whole
+# map is committed to ONE MeshInstance3D per material (~8 draw calls instead of
+# ~50). Collision stays as individual StaticBody3D boxes, so navigation/physics/
+# bullet hits are unchanged — only the rendering is batched.
+var _surf: Dictionary = {}
 
 func _ready() -> void:
 	_make_materials()
@@ -33,9 +38,11 @@ func _ready() -> void:
 	_build_plaza_cover()
 	_build_street_cover()
 	_build_lamps()
+	_commit_meshes()        # batch all visual geometry into per-material meshes
 	_place_enemy_spawns()
 	_place_pickups()
 	_place_tactical_points()
+	_apply_mobile_perf()    # cheaper rendering on touch devices (desktop unchanged)
 
 # ─── Materials ───────────────────────────────────────────────
 func _make_materials() -> void:
@@ -58,6 +65,7 @@ func _mk(c: Color, rough: float, metal: float) -> StandardMaterial3D:
 	return m
 
 # ─── Geometry helpers ────────────────────────────────────────
+# Collision body (no per-box MeshInstance — the visual box is batched via _mesh_box).
 func _solid(p_name: String, center: Vector3, size: Vector3, mat_key: String) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.name = p_name
@@ -66,26 +74,36 @@ func _solid(p_name: String, center: Vector3, size: Vector3, mat_key: String) -> 
 	shp.size = size
 	col.shape = shp
 	body.add_child(col)
-	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = size
-	bm.material = mat.get(mat_key)
-	mi.mesh = bm
-	body.add_child(mi)
 	body.position = center
 	add_child(body)
+	_mesh_box(mat_key, Transform3D(Basis(), center), size)
 	return body
 
-# Visual-only flat quad (thin; collision is harmless/flush, walkable).
-func _decal(p_name: String, center: Vector3, size: Vector3, mat_key: String) -> void:
-	var mi := MeshInstance3D.new()
-	mi.name = p_name
+# Append a box's visual geometry into the per-material batch.
+func _mesh_box(mat_key: String, xform: Transform3D, size: Vector3) -> void:
+	var st: SurfaceTool = _surf.get(mat_key)
+	if st == null:
+		st = SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		_surf[mat_key] = st
 	var bm := BoxMesh.new()
 	bm.size = size
-	bm.material = mat.get(mat_key)
-	mi.mesh = bm
-	mi.position = center
-	add_child(mi)
+	st.append_from(bm, 0, xform)
+
+# Commit every per-material batch to a single MeshInstance3D.
+func _commit_meshes() -> void:
+	for key in _surf.keys():
+		var st: SurfaceTool = _surf[key]
+		st.set_material(mat.get(key))
+		var mi := MeshInstance3D.new()
+		mi.name = "Merged_" + key
+		mi.mesh = st.commit()
+		add_child(mi)
+	_surf.clear()
+
+# Visual-only flat quad (no collision; batched like everything else).
+func _decal(p_name: String, center: Vector3, size: Vector3, mat_key: String) -> void:
+	_mesh_box(mat_key, Transform3D(Basis(), center), size)
 
 # Wall along an axis with doorway gaps left open.
 # axis "x": wall varies along X at fixed Z. axis "z": varies along Z at fixed X.
@@ -138,6 +156,7 @@ func _ramp_between(p_name: String, base: Vector3, top: Vector3, width: float, ma
 	xb = xb.normalized()
 	var yb := zb.cross(xb).normalized()
 	var center := (base + top) * 0.5 - yb * (thick * 0.5)
+	var xform := Transform3D(Basis(xb, yb, zb), center)
 	var body := StaticBody3D.new()
 	body.name = p_name
 	var col := CollisionShape3D.new()
@@ -145,14 +164,9 @@ func _ramp_between(p_name: String, base: Vector3, top: Vector3, width: float, ma
 	shp.size = Vector3(width, thick, length)
 	col.shape = shp
 	body.add_child(col)
-	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(width, thick, length)
-	bm.material = mat.get(mat_key)
-	mi.mesh = bm
-	body.add_child(mi)
-	body.transform = Transform3D(Basis(xb, yb, zb), center)
+	body.transform = xform
 	add_child(body)
+	_mesh_box(mat_key, xform, Vector3(width, thick, length))
 
 # ─── Markers ─────────────────────────────────────────────────
 func _marker(group: String, pos: Vector3) -> Node3D:
@@ -259,11 +273,10 @@ func _build_street_cover() -> void:
 		i += 1
 
 # ─── Lamps ───────────────────────────────────────────────────
+# Kept to 4 fill lights (was 6) — each real-time light costs in GL Compatibility.
 func _build_lamps() -> void:
-	for p in [Vector3(8, 5, 8), Vector3(-8, 5, 8), Vector3(8, 5, -8), Vector3(-8, 5, -8)]:
-		_lamp(p, Color(1.0, 0.85, 0.6), 16.0, 2.0)
-	_lamp(Vector3(-23, 6, -23), Color(0.8, 0.85, 1.0), 16.0, 2.2)   # over hero NW
-	_lamp(Vector3(23, 6, 23), Color(0.8, 0.85, 1.0), 16.0, 2.2)     # over hero SE
+	for p in [Vector3(10, 5, 10), Vector3(-10, 5, 10), Vector3(10, 5, -10), Vector3(-10, 5, -10)]:
+		_lamp(p, Color(1.0, 0.85, 0.6), 18.0, 2.0)
 
 func _lamp(pos: Vector3, color: Color, rng: float, energy: float) -> void:
 	var l := OmniLight3D.new()
@@ -272,6 +285,27 @@ func _lamp(pos: Vector3, color: Color, rng: float, energy: float) -> void:
 	l.omni_range = rng
 	l.light_energy = energy
 	add_child(l)
+
+# ─── Mobile perf (touch devices only; desktop quality unchanged) ─────────────
+func _apply_mobile_perf() -> void:
+	if not GameManager.touch_mode:
+		return
+	# Render 3D at ~0.67 resolution then upscale — the biggest win on high-DPI phones.
+	var vp := get_viewport()
+	if vp:
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		vp.scaling_3d_scale = 0.67
+	var main := get_parent()
+	if main == null:
+		return
+	# Drop the full-screen glow pass and the directional shadow map (both heavy on
+	# mobile GPUs); keep them on desktop.
+	var we := main.get_node_or_null("WorldEnvironment")
+	if we and we.environment:
+		we.environment.glow_enabled = false
+	var dl := main.get_node_or_null("DirectionalLight3D")
+	if dl:
+		dl.shadow_enabled = false
 
 # ─── Marker placement ────────────────────────────────────────
 func _place_enemy_spawns() -> void:
