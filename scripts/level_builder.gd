@@ -185,17 +185,19 @@ func _tactical(pos: Vector3, kind: String, zone: String, access: Vector3 = Vecto
 
 # ─── Ground / perimeter / avenues ────────────────────────────
 func _build_ground_and_perimeter() -> void:
-	_solid("Ground", Vector3(0, -0.5, 0), Vector3(72, 1, 72), "grass")
+	# Tightened from 68→60: a 3-4m ring behind the corner buildings instead of a
+	# wide empty perimeter, so the arena reads denser and enemies close faster.
+	_solid("Ground", Vector3(0, -0.5, 0), Vector3(64, 1, 64), "grass")
 	var h := 9.0
-	_solid("WallN", Vector3(0, h * 0.5, -34), Vector3(72, h, 1), "concrete_dark")
-	_solid("WallS", Vector3(0, h * 0.5, 34), Vector3(72, h, 1), "concrete_dark")
-	_solid("WallE", Vector3(34, h * 0.5, 0), Vector3(1, h, 72), "concrete_dark")
-	_solid("WallW", Vector3(-34, h * 0.5, 0), Vector3(1, h, 72), "concrete_dark")
+	_solid("WallN", Vector3(0, h * 0.5, -30), Vector3(64, h, 1), "concrete_dark")
+	_solid("WallS", Vector3(0, h * 0.5, 30), Vector3(64, h, 1), "concrete_dark")
+	_solid("WallE", Vector3(30, h * 0.5, 0), Vector3(1, h, 64), "concrete_dark")
+	_solid("WallW", Vector3(-30, h * 0.5, 0), Vector3(1, h, 64), "concrete_dark")
 
 func _build_avenues() -> void:
 	# Visual road strips for readable flow (flush to ground).
-	_decal("AveNS", Vector3(0, 0.02, 0), Vector3(11, 0.04, 68), "road")
-	_decal("AveEW", Vector3(0, 0.02, 0), Vector3(68, 0.04, 11), "road")
+	_decal("AveNS", Vector3(0, 0.02, 0), Vector3(11, 0.04, 60), "road")
+	_decal("AveEW", Vector3(0, 0.02, 0), Vector3(60, 0.04, 11), "road")
 
 # ─── HERO building (PUBG-style: rooms, windows, interior ramp → 2F loft) ──
 func _hero_building(cx: float, cz: float, _zone: String) -> void:
@@ -309,12 +311,14 @@ func _apply_mobile_perf() -> void:
 
 # ─── Marker placement ────────────────────────────────────────
 func _place_enemy_spawns() -> void:
+	# Pulled in (was ~32-46m) so enemies arrive faster and from all sides, not a
+	# long trek across empty avenues. All inside the ±30 wall and clear of buildings.
 	var pts := [
-		Vector3(0, 0.5, -32), Vector3(0, 0.5, 32),       # N/S avenue ends
-		Vector3(-32, 0.5, 0), Vector3(32, 0.5, 0),        # W/E avenue ends
-		Vector3(-16, 0.5, -32), Vector3(16, 0.5, -32),    # north alley mouths
-		Vector3(-16, 0.5, 32), Vector3(16, 0.5, 32),      # south alley mouths
-		Vector3(-32, 0.5, 16), Vector3(32, 0.5, -16),     # ring road
+		Vector3(0, 0.5, -26), Vector3(0, 0.5, 26),        # central avenue mouths (N/S)
+		Vector3(-26, 0.5, 0), Vector3(26, 0.5, 0),        # central avenue mouths (W/E)
+		Vector3(-19, 0.5, -28), Vector3(19, 0.5, -28),    # behind the north buildings
+		Vector3(-19, 0.5, 28), Vector3(19, 0.5, 28),      # behind the south buildings
+		Vector3(-28, 0.5, -19), Vector3(28, 0.5, 19),     # side alleys
 	]
 	for p in pts:
 		_marker("enemy_spawn", p)
@@ -325,9 +329,9 @@ func _place_pickups() -> void:
 		Vector3(-19, LOFT_Y + 0.2, -24), Vector3(19, LOFT_Y + 0.2, 14),  # hero lofts (centered on north side)
 		Vector3(-19, 0.7, -16), Vector3(19, 0.7, 16),                    # hero interiors
 		Vector3(19, 0.7, -19), Vector3(-19, 0.7, 19),                    # shed interiors
-		Vector3(0, 0.7, -24), Vector3(0, 0.7, 24),                       # avenues
-		Vector3(-28, 0.7, 0), Vector3(28, 0.7, 0),                       # avenue ends
-		Vector3(-30, 0.7, -30),                                          # ring corner
+		Vector3(0, 0.7, -23), Vector3(0, 0.7, 23),                       # avenues
+		Vector3(-26, 0.7, 0), Vector3(26, 0.7, 0),                       # avenue ends
+		Vector3(-27, 0.7, -27),                                          # ring corner
 	]
 	for p in pts:
 		_marker("pickup_point", p)
@@ -341,12 +345,12 @@ func _place_tactical_points() -> void:
 	_tactical(Vector3(-19, LOFT_Y, -24), "OBJECTIVE", "nw", Vector3(-19, 0.5, -10), false)
 	# Flank entries: building side doors + alley mouths near the plaza. access =
 	# a far point so the picked enemy routes the long concealed way around.
-	_tactical(Vector3(-11, 0.5, -19), "FLANK_ENTRY", "nw", Vector3(-32, 0.5, 0))   # NW east door
-	_tactical(Vector3(11, 0.5, 19), "FLANK_ENTRY", "se", Vector3(32, 0.5, 0))      # SE west door
-	_tactical(Vector3(11, 0.5, -19), "FLANK_ENTRY", "ne", Vector3(32, 0.5, 0))     # NE west door
-	_tactical(Vector3(-11, 0.5, 19), "FLANK_ENTRY", "sw", Vector3(-32, 0.5, 0))    # SW east door
-	_tactical(Vector3(0, 0.5, -14), "FLANK_ENTRY", "north", Vector3(0, 0.5, -32))  # north avenue
-	_tactical(Vector3(0, 0.5, 14), "FLANK_ENTRY", "south", Vector3(0, 0.5, 32))    # south avenue
+	_tactical(Vector3(-11, 0.5, -19), "FLANK_ENTRY", "nw", Vector3(-26, 0.5, 0))   # NW east door
+	_tactical(Vector3(11, 0.5, 19), "FLANK_ENTRY", "se", Vector3(26, 0.5, 0))      # SE west door
+	_tactical(Vector3(11, 0.5, -19), "FLANK_ENTRY", "ne", Vector3(26, 0.5, 0))     # NE west door
+	_tactical(Vector3(-11, 0.5, 19), "FLANK_ENTRY", "sw", Vector3(-26, 0.5, 0))    # SW east door
+	_tactical(Vector3(0, 0.5, -14), "FLANK_ENTRY", "north", Vector3(0, 0.5, -26))  # north avenue
+	_tactical(Vector3(0, 0.5, 14), "FLANK_ENTRY", "south", Vector3(0, 0.5, 26))    # south avenue
 	# Chokepoints
 	_tactical(Vector3(-19, 0.5, -12), "CHOKE", "nw")
 	_tactical(Vector3(19, 0.5, 12), "CHOKE", "se")

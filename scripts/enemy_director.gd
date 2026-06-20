@@ -16,6 +16,8 @@ extends Node
 @export var min_enemies_before_objective: int = 3
 @export var flank_interval: float = 6.0
 @export var highground_interval: float = 7.0
+@export var heal_intercept_interval: float = 2.5
+@export var heal_hp_threshold: float = 0.55   # only contest heals when the player is below this
 
 @export var profiler_tick_interval: float = 0.2
 @export var debug_profile_log: bool = false
@@ -23,8 +25,10 @@ extends Node
 var _reassign_timer: float = 0.3
 var _flank_timer: float = 2.0
 var _highground_timer: float = 3.5
+var _heal_timer: float = 1.0
 var _flank_ref: WeakRef = null
 var _highground_ref: WeakRef = null
+var _heal_ref: WeakRef = null
 
 # Cached tactical-point markers (placed by LevelBuilder into group tactical_points).
 var _tactical: Array = []
@@ -123,6 +127,7 @@ func _process(delta: float) -> void:
 	_reassign_timer -= delta
 	_flank_timer -= delta
 	_highground_timer -= delta
+	_heal_timer -= delta
 	if _reassign_timer <= 0.0:
 		_reassign_timer = reassign_interval
 		_reassign_slots()
@@ -132,6 +137,9 @@ func _process(delta: float) -> void:
 	if _highground_timer <= 0.0:
 		_highground_timer = highground_interval
 		_maybe_contest_highground()
+	if _heal_timer <= 0.0:
+		_heal_timer = heal_intercept_interval
+		_maybe_intercept_heal()
 
 # ─── Encirclement: slot allocation ──────────────────────────
 func _reassign_slots() -> void:
@@ -312,6 +320,46 @@ func _maybe_contest_highground() -> void:
 		return
 	picked.assign_objective(obj, climb)
 	_highground_ref = weakref(picked)
+
+# ─── Adaptive: contest the health pickup ────────────────────
+# When the player is hurt they'll break for a health pack — so notice it and send
+# an enemy (preferably a fast Rusher) to camp/ambush the nearest pack. The guard
+# arrives and holds the spot, turning the heal run into a fight.
+func _maybe_intercept_heal() -> void:
+	# Block while a guard is still en route to (or just reached) the pack.
+	if _heal_ref != null:
+		var g = _heal_ref.get_ref()
+		if g != null and is_instance_valid(g) and g.get("has_objective"):
+			return
+	var player = GameManager.player
+	if not is_instance_valid(player) or player.get("max_health") == null:
+		return
+	# Only bother when the player actually needs to heal.
+	if float(player.current_health) / float(max(1, int(player.max_health))) > heal_hp_threshold:
+		return
+	var enemies := get_tree().get_nodes_in_group("enemies")
+	if enemies.size() < min_enemies_before_objective:
+		return
+	# The pack the player is most likely heading for: the one nearest them (and
+	# close enough to be worth contesting).
+	var target: Node3D = null
+	var best_d: float = 34.0
+	for p in get_tree().get_nodes_in_group("pickup_health"):
+		if not is_instance_valid(p):
+			continue
+		var d: float = (p as Node3D).global_position.distance_to(player.global_position)
+		if d < best_d:
+			best_d = d
+			target = p
+	if target == null:
+		return
+	var picked := _nearest_free_enemy(enemies, target.global_position, 1)   # prefer RUSHER
+	if picked == null:
+		picked = _nearest_free_enemy(enemies, target.global_position)
+	if picked == null:
+		return
+	picked.assign_objective(target.global_position, false)
+	_heal_ref = weakref(picked)
 
 # ─── Helpers ─────────────────────────────────────────────────
 func _points_of(kind: String) -> Array:
