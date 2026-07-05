@@ -191,7 +191,9 @@ func _reassign_slots() -> void:
 	var active: Array = []
 	for e in enemies:
 		if not is_instance_valid(e): continue
+		if e.get("_dying"): continue                 # corpses waste ring slots
 		if e.get("has_objective"): continue
+		if e.has_method("is_holding") and e.is_holding(): continue   # on guard duty
 		if (e as Node3D).global_position.y > 5.0: continue
 		active.append(e)
 
@@ -235,6 +237,8 @@ func _maybe_flank() -> void:
 		return
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	if enemies.size() < min_enemies_before_objective:
+		return
+	if not _objective_budget_left(enemies):
 		return
 	var entries := _points_of("FLANK_ENTRY")
 	if entries.is_empty():
@@ -280,6 +284,8 @@ func _maybe_contest_highground() -> void:
 		return
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	if enemies.size() < min_enemies_before_objective:
+		return
+	if not _objective_budget_left(enemies):
 		return
 	var highs := _points_of("HIGH_GROUND")
 	if highs.is_empty():
@@ -340,6 +346,8 @@ func _maybe_intercept_heal() -> void:
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	if enemies.size() < min_enemies_before_objective:
 		return
+	if not _objective_budget_left(enemies):
+		return
 	# The pack the player is most likely heading for: the one nearest them (and
 	# close enough to be worth contesting).
 	var target: Node3D = null
@@ -358,10 +366,24 @@ func _maybe_intercept_heal() -> void:
 		picked = _nearest_free_enemy(enemies, target.global_position)
 	if picked == null:
 		return
-	picked.assign_objective(target.global_position, false)
+	picked.assign_objective(target.global_position, false, 8.0)   # camp the pack 8s
 	_heal_ref = weakref(picked)
 
 # ─── Helpers ─────────────────────────────────────────────────
+# Shared objective budget: the flank / high-ground / heal systems each pull an
+# enemy out of the fight, and independently they could consume the WHOLE squad
+# in small waves (nobody left attacking). Cap total detached enemies to 1 per 3
+# alive, so the ring always keeps fighters.
+func _objective_budget_left(enemies: Array) -> bool:
+	var alive := 0
+	var detached := 0
+	for e in enemies:
+		if not is_instance_valid(e) or e.get("_dying"): continue
+		alive += 1
+		if e.get("has_objective") or (e.has_method("is_holding") and e.is_holding()):
+			detached += 1
+	return detached < maxi(1, int(alive / 3.0))
+
 func _points_of(kind: String) -> Array:
 	var out: Array = []
 	for t in _tactical:
@@ -379,7 +401,9 @@ func _nearest_free_enemy(enemies: Array, near: Vector3, prefer_type: int = -1) -
 	var best_d: float = INF
 	for e in enemies:
 		if not is_instance_valid(e): continue
+		if e.get("_dying"): continue                          # never task a corpse
 		if e.get("has_objective"): continue
+		if e.has_method("is_holding") and e.is_holding(): continue
 		if (e as Node3D).global_position.y > 5.0: continue   # already perched
 		if prefer_type >= 0 and int(e.get("enemy_type")) != prefer_type: continue
 		var d: float = (e as Node3D).global_position.distance_to(near)

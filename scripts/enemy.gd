@@ -237,7 +237,7 @@ func assign_slot(pos: Vector3, new_role: String) -> void:
 	slot_position = pos
 	role = new_role
 
-func assign_objective(pos: Vector3, climb: bool = false) -> void:
+func assign_objective(pos: Vector3, climb: bool = false, hold_sec: float = 0.0) -> void:
 	objective_position = pos
 	has_objective = true
 	role = "objective"
@@ -246,6 +246,18 @@ func assign_objective(pos: Vector3, climb: bool = false) -> void:
 	# flank-route mouth or a walkable high ground); arrival clears it so the enemy
 	# rejoins combat from the new position.
 	_objective_climb = climb
+	# hold_sec > 0 → after arriving, GUARD the spot for that long (fighting from
+	# there) instead of immediately rejoining the ring. Used for pickup ambushes.
+	_objective_hold_sec = hold_sec
+	hold_position = NO_TARGET
+
+# ── Post-objective guard duty ──
+var hold_position: Vector3 = NO_TARGET
+var _hold_until_ms: float = 0.0
+var _objective_hold_sec: float = 0.0
+
+func is_holding() -> bool:
+	return hold_position.x < 1.0e29
 
 func clear_objective() -> void:
 	has_objective = false
@@ -306,8 +318,11 @@ func _physics_process(delta: float) -> void:
 	velocity.x = desired.x
 	velocity.z = desired.z
 
-	# Attack — any state except climbing to objective.
-	if state != State.GOTO_OBJECTIVE and attack_cooldown <= 0.0:
+	# Attack — including self-defence while travelling to an objective: an enemy
+	# crossing the map to flank/guard used to be a free kill even at point-blank.
+	# It keeps moving, but shoots back when the player is close.
+	var travelling: bool = state == State.GOTO_OBJECTIVE
+	if attack_cooldown <= 0.0 and (not travelling or distance_p <= 14.0):
 		var same_level: bool = absf(global_position.y - (player as Node3D).global_position.y) < 2.5
 		if distance_p <= melee_range and same_level:
 			# Point-blank → melee. No LOS needed, faster than shooting. (Skipped
@@ -473,6 +488,23 @@ func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, de
 	# enemies (has_objective / on_ladder) are exempt so they can still reach the top.
 	if global_position.y > 5.0 and not has_objective and not on_ladder:
 		return _perched_strafe(forward_to_player, delta)
+	# Guard duty: stay on post (a contested pickup) and fight from there — strafe
+	# in place, pull back to the post if we drift. Combat/attack logic still runs
+	# normally in this state, so the guard shoots anyone approaching.
+	if hold_position.x < 1.0e29 and not has_objective:
+		if float(Time.get_ticks_msec()) > _hold_until_ms:
+			hold_position = NO_TARGET
+		else:
+			var to_post := hold_position - global_position
+			to_post.y = 0
+			if to_post.length() > 2.5:
+				return _nav_dir(hold_position, move_speed)
+			strafe_timer -= delta
+			if strafe_timer <= 0.0:
+				strafe_dir = -strafe_dir
+				strafe_timer = randf_range(strafe_change_interval_min, strafe_change_interval_max)
+			var hold_right := Vector3(forward_to_player.z, 0, -forward_to_player.x)
+			return hold_right * strafe_speed * float(strafe_dir)
 	match state:
 		State.EVADE:
 			var right := Vector3(forward_to_player.z, 0, -forward_to_player.x)
@@ -489,6 +521,11 @@ func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, de
 				# drop the objective and fight from here. Ladder objectives keep it so
 				# the climb (and exit_ladder at the top) can finish.
 				if not _objective_climb:
+					if _objective_hold_sec > 0.0:
+						# Guard duty: hold this spot (see hold branch below).
+						hold_position = objective_position
+						_hold_until_ms = float(Time.get_ticks_msec()) + _objective_hold_sec * 1000.0
+						_objective_hold_sec = 0.0
 					clear_objective()
 				return Vector3.ZERO
 			return _nav_dir(objective_position, sprint_speed)

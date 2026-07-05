@@ -103,7 +103,7 @@ func _spawn_one() -> void:
 func _pick_spread_spawn(player_pos: Vector3) -> Node3D:
 	var enemy_dirs: Array[Vector2] = []
 	for e in get_tree().get_nodes_in_group("enemies"):
-		if not is_instance_valid(e):
+		if not is_instance_valid(e) or e.get("_dying"):
 			continue
 		var to: Vector3 = (e as Node3D).global_position - player_pos
 		var v := Vector2(to.x, to.z)
