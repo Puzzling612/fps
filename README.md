@@ -37,12 +37,28 @@
 2. `gamelike`에 push → **Actions** 탭에서 `Deploy Web build to GitHub Pages` 워크플로우 완료를 확인.
 3. 폰 브라우저에서 **`https://puzzling612.github.io/fps/`** 접속 → 가로로 돌려서 플레이. (이후 push마다 자동 갱신)
 
-## Windows 실행 파일 (exe)
+## PC용 다운로드 & 설치 (Windows / macOS)
 
-push마다 CI가 **단일 파일 `FPS.exe`**(x86_64, 데이터 내장)를 빌드합니다.
+실행 파일은 용량 제한(100MB) 때문에 **저장소 안에 들어있지 않습니다.** 대신 push마다 CI가 자동으로 빌드해 **GitHub Actions 아티팩트**로 올립니다.
 
-- **다운로드**: GitHub 저장소 → **Actions** 탭 → 최신 `Deploy Web build to GitHub Pages` 실행 클릭 → 하단 **Artifacts**에서 `FPS-windows-x86_64` 다운로드 → 압축 풀고 `FPS.exe` 실행. (아티팩트 보존 기간은 기본 90일)
-- **로컬 빌드**: Godot 4.6 에디터 → Project → Export → **Windows** 프리셋 → `build/windows/FPS.exe`. (Export Templates 필요: Editor → Manage Export Templates)
+**다운로드 (공통)**
+1. GitHub 저장소 → **Actions** 탭
+2. 목록 맨 위의 최신 초록색(✓) 실행 클릭
+3. 페이지 하단 **Artifacts** 섹션에서 받기 (아티팩트는 90일 보관; 만료됐으면 Actions에서 `Run workflow`로 재빌드)
+
+**Windows 설치**
+1. `FPS-windows-x86_64` 다운로드 → 압축 해제
+2. `FPS.exe` 더블클릭 (단일 파일, 설치 불필요)
+3. "Windows의 PC 보호(SmartScreen)" 창이 뜨면 **추가 정보 → 실행** 클릭 (서명 없는 개인 빌드라 뜨는 정상 경고)
+
+**macOS 설치**
+1. `FPS-macos-universal` 다운로드 → 압축 해제 → `FPS.app`을 원하는 곳(예: 응용 프로그램)에 이동
+2. 첫 실행은 **우클릭(Ctrl+클릭) → 열기 → 열기** (더블클릭하면 "확인되지 않은 개발자" 경고로 차단됨 — Apple 공증이 없는 개인 빌드라 정상)
+3. 그래도 차단되면 터미널에서: `xattr -cr /경로/FPS.app` 후 다시 실행
+- Intel/Apple Silicon 모두 지원(유니버설 바이너리)
+
+**직접 빌드 (Godot 4.6 에디터)**
+- Project → Export → **Windows** 또는 **macOS** 프리셋 → Export Project. (최초 1회 Editor → Manage Export Templates에서 템플릿 설치 필요)
 
 ### B. 로컬 서버 (CI 없이)
 
