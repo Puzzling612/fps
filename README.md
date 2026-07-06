@@ -37,6 +37,13 @@
 2. `gamelike`에 push → **Actions** 탭에서 `Deploy Web build to GitHub Pages` 워크플로우 완료를 확인.
 3. 폰 브라우저에서 **`https://puzzling612.github.io/fps/`** 접속 → 가로로 돌려서 플레이. (이후 push마다 자동 갱신)
 
+## Windows 실행 파일 (exe)
+
+push마다 CI가 **단일 파일 `FPS.exe`**(x86_64, 데이터 내장)를 빌드합니다.
+
+- **다운로드**: GitHub 저장소 → **Actions** 탭 → 최신 `Deploy Web build to GitHub Pages` 실행 클릭 → 하단 **Artifacts**에서 `FPS-windows-x86_64` 다운로드 → 압축 풀고 `FPS.exe` 실행. (아티팩트 보존 기간은 기본 90일)
+- **로컬 빌드**: Godot 4.6 에디터 → Project → Export → **Windows** 프리셋 → `build/windows/FPS.exe`. (Export Templates 필요: Editor → Manage Export Templates)
+
 ### B. 로컬 서버 (CI 없이)
 
 1. Godot 4.6 에디터에서 **Project → Export → Web** 프리셋으로 `build/web/index.html` 내보내기.

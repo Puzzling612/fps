@@ -72,6 +72,19 @@ jobs:
         with:
           path: build/web
 
+      - name: Export Windows (single-file exe)
+        run: |
+          set -e
+          mkdir -p build/windows
+          godot --headless --export-release "Windows" build/windows/FPS.exe
+          ls -la build/windows
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: FPS-windows-x86_64
+          path: build/windows/FPS.exe
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
