@@ -39,23 +39,24 @@
 
 ## PC용 다운로드 & 설치 (Windows / macOS)
 
-실행 파일은 용량 제한(100MB) 때문에 **저장소 안에 들어있지 않습니다.** 대신 push마다 CI가 자동으로 빌드해 **GitHub Actions 아티팩트**로 올립니다.
+아래 링크를 누르면 **바로 최신 빌드가 다운로드**됩니다. (push마다 CI가 자동 갱신하는 고정 링크)
 
-**다운로드 (공통)**
-1. GitHub 저장소 → **Actions** 탭
-2. 목록 맨 위의 최신 초록색(✓) 실행 클릭
-3. 페이지 하단 **Artifacts** 섹션에서 받기 (아티팩트는 90일 보관; 만료됐으면 Actions에서 `Run workflow`로 재빌드)
+| OS | 다운로드 | 비고 |
+|---|---|---|
+| **Windows** | **[⬇ FPS.exe](https://github.com/Puzzling612/fps/releases/latest/download/FPS.exe)** | 단일 파일, 설치 불필요 (x86_64) |
+| **macOS** | **[⬇ FPS-macos.zip](https://github.com/Puzzling612/fps/releases/latest/download/FPS-macos.zip)** | Intel/Apple Silicon 공용 |
 
-**Windows 설치**
-1. `FPS-windows-x86_64` 다운로드 → 압축 해제
-2. `FPS.exe` 더블클릭 (단일 파일, 설치 불필요)
+전체 목록은 [Releases 페이지](https://github.com/Puzzling612/fps/releases/latest)에서도 볼 수 있습니다.
+
+**Windows 실행법**
+1. 위 링크로 `FPS.exe` 다운로드
+2. 더블클릭 실행 (설치 과정 없음)
 3. "Windows의 PC 보호(SmartScreen)" 창이 뜨면 **추가 정보 → 실행** 클릭 (서명 없는 개인 빌드라 뜨는 정상 경고)
 
-**macOS 설치**
-1. `FPS-macos-universal` 다운로드 → 압축 해제 → `FPS.app`을 원하는 곳(예: 응용 프로그램)에 이동
+**macOS 실행법**
+1. 위 링크로 `FPS-macos.zip` 다운로드 → 압축 해제 → `FPS.app`을 원하는 곳(예: 응용 프로그램)에 이동
 2. 첫 실행은 **우클릭(Ctrl+클릭) → 열기 → 열기** (더블클릭하면 "확인되지 않은 개발자" 경고로 차단됨 — Apple 공증이 없는 개인 빌드라 정상)
 3. 그래도 차단되면 터미널에서: `xattr -cr /경로/FPS.app` 후 다시 실행
-- Intel/Apple Silicon 모두 지원(유니버설 바이너리)
 
 **직접 빌드 (Godot 4.6 에디터)**
 - Project → Export → **Windows** 또는 **macOS** 프리셋 → Export Project. (최초 1회 Editor → Manage Export Templates에서 템플릿 설치 필요)
