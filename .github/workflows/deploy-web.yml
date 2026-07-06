@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # rolling "latest" release with the PC builds attached
   pages: write
   id-token: write
 
@@ -97,6 +97,24 @@ jobs:
         with:
           name: FPS-macos-universal
           path: build/macos/FPS.zip
+
+      # Rolling "latest" release so the README can offer permanent one-click
+      # download links (artifacts require login + several clicks and expire).
+      - name: Publish latest release (direct-download links)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          cp build/macos/FPS.zip FPS-macos.zip
+          cp build/windows/FPS.exe FPS.exe
+          if ! gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create latest --repo "$GITHUB_REPOSITORY" \
+              --title "Latest build" \
+              --notes "push마다 자동 갱신되는 최신 빌드입니다. (commit: ${GITHUB_SHA})"
+          fi
+          gh release upload latest FPS.exe FPS-macos.zip --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit latest --repo "$GITHUB_REPOSITORY" \
+            --notes "push마다 자동 갱신되는 최신 빌드입니다. (commit: ${GITHUB_SHA})"
 
   deploy:
     needs: build
