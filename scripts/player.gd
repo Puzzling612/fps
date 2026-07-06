@@ -89,23 +89,33 @@ func _ready() -> void:
 		_crouch_camera_y = camera_pivot.position.y
 		camera.fov = fov_default
 
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	# Touch devices drive the view with on-screen controls, so don't capture the
+	# (nonexistent) mouse there.
+	if not GameManager.touch_mode:
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+# Rotate the view by a pixel delta. Shared by mouse-look and the touch look-pad
+# (TouchControls calls this), so look behaviour lives in one place.
+func apply_look(relative: Vector2) -> void:
+	# Scale sensitivity by zoom: while aiming, slow the look in proportion to the
+	# FOV reduction so a given move sweeps the same world angle as hipfire. Big
+	# zoom (sniper, FOV 16) → much finer aim for headshots.
+	var sens := mouse_sensitivity
+	if weapon and weapon.ads:
+		sens *= (camera.fov / fov_default) * ads_sensitivity_multiplier
+	rotate_y(-relative.x * sens * 0.01)
+	camera_pivot.rotate_x(-relative.y * sens * 0.01)
+	camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion:
-		# Scale sensitivity by zoom: while aiming, slow the look in proportion to
-		# the FOV reduction so a given mouse move sweeps the same world angle as
-		# hipfire. Big zoom (sniper, FOV 16) → much finer aim for headshots.
-		var sens := mouse_sensitivity
-		if weapon and weapon.ads:
-			sens *= (camera.fov / fov_default) * ads_sensitivity_multiplier
-		rotate_y(-event.relative.x * sens * 0.01)
-		camera_pivot.rotate_x(-event.relative.y * sens * 0.01)
-		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
-	elif event is InputEventMouseButton and event.is_pressed() and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	# On touch, looking is driven by TouchControls.apply_look — ignore the
+	# emulated mouse motion so the view doesn't get rotated twice.
+	if event is InputEventMouseMotion and not GameManager.touch_mode:
+		apply_look(event.relative)
+	elif not GameManager.touch_mode and event is InputEventMouseButton and event.is_pressed() and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		get_viewport().set_input_as_handled()
-	elif event is InputEventKey and event.is_action_pressed("ui_cancel"):
+	elif not GameManager.touch_mode and event is InputEventKey and event.is_action_pressed("ui_cancel"):
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 func _process(delta: float) -> void:
@@ -151,7 +161,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("weapon_prev"): weapon.cycle(-1)
 
 	# ── Aim-down-sights ──
-	var want_ads = Input.is_action_pressed("aim") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var want_ads = Input.is_action_pressed("aim") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or GameManager.touch_mode)
 	weapon.set_ads(want_ads)
 
 	var sprinting = Input.is_action_pressed("sprint") and input_dir.z > 0.4 and not is_crouching and not weapon.ads
@@ -188,7 +198,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	if Input.is_action_pressed("shoot") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if Input.is_action_pressed("shoot") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or GameManager.touch_mode):
 		var origin = raycast.global_transform.origin
 		var direction = -raycast.global_transform.basis.z
 		weapon.try_fire(origin, direction, Input.is_action_just_pressed("shoot"))

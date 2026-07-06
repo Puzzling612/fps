@@ -1,14 +1,15 @@
 extends Node3D
 
 @export var enemy_scene: PackedScene
-@export var base_enemy_count: int = 5
-@export var per_round_increment: int = 1     # count still scales, but density was too punishing at 2
-@export var max_concurrent: int = 3          # was 4 — match the on-screen count to player kill-rate (~0.5/s)
-@export var base_spawn_interval: float = 2.5
-@export var min_spawn_interval: float = 1.0  # was 0.5 — replacements must arrive SLOWER than the player kills, so a kill actually relieves pressure
-@export var interval_decay_per_round: float = 0.1   # was 0.2 — keep spawn interval (~2s mid-game) above player TTK
+@export var base_enemy_count: int = 6
+@export var per_round_increment: int = 2      # bigger waves so the encirclement fills
+@export var max_concurrent: int = 4           # base on-screen count (scales with wave below)
+@export var base_spawn_interval: float = 2.2
+@export var min_spawn_interval: float = 0.9
+@export var interval_decay_per_round: float = 0.1
 @export var round_break_time: float = 4.0
 @export var first_round_delay: float = 2.0
+@export var min_spawn_player_dist: float = 16.0   # never pop in right on top of the player
 
 var spawn_points: Array[Node3D] = []
 var enemies_remaining_in_round: int = 0
@@ -19,10 +20,20 @@ var break_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("enemy_spawner")
-	for child in get_children():
-		if child is Node3D:
-			spawn_points.append(child)
 	break_timer = first_round_delay
+	# Spawn points are created by the LevelBuilder into group "enemy_spawn".
+	# Collect deferred so the builder (and any tscn markers) have registered first.
+	call_deferred("_collect_spawn_points")
+
+func _collect_spawn_points() -> void:
+	spawn_points.clear()
+	for n in get_tree().get_nodes_in_group("enemy_spawn"):
+		if n is Node3D:
+			spawn_points.append(n)
+	# Fallback: any Node3D children placed directly under the spawner in the scene.
+	for child in get_children():
+		if child is Node3D and not spawn_points.has(child):
+			spawn_points.append(child)
 
 func _process(delta: float) -> void:
 	if GameManager.is_game_over:
@@ -44,11 +55,11 @@ func _current_interval() -> float:
 	return max(min_spawn_interval, base_spawn_interval - (r - 1) * interval_decay_per_round)
 
 # Primary difficulty lever: enemy stats are fixed, so pressure scales by putting
-# more enemies on screen at once. +1 concurrent every 4 waves, capped at 7 —
-# the on-screen count drives incoming DPS, so this is kept gentle.
+# more enemies on screen at once. +1 concurrent every 3 waves, capped at 8 — enough
+# to fill the director's 8 encirclement slots so the player feels surrounded.
 func _current_max_concurrent() -> int:
 	var r = max(1, GameManager.current_round)
-	return min(6, max_concurrent + int(floor((r - 1) / 4.0)))
+	return min(8, max_concurrent + int(floor((r - 1) / 3.0)))
 
 func _start_next_round() -> void:
 	var n = GameManager.current_round + 1
@@ -64,15 +75,7 @@ func _spawn_one() -> void:
 	if is_instance_valid(GameManager.player):
 		player_pos = GameManager.player.global_position
 
-	var shuffled = spawn_points.duplicate()
-	shuffled.shuffle()
-	var best: Node3D = shuffled[0]
-	var best_dist: float = (best.global_position - player_pos).length()
-	for p in shuffled:
-		var d = (p.global_position - player_pos).length()
-		if d > best_dist:
-			best = p
-			best_dist = d
+	var best: Node3D = _pick_spread_spawn(player_pos)
 
 	var enemy = enemy_scene.instantiate()
 
@@ -92,6 +95,40 @@ func _spawn_one() -> void:
 	enemy.global_position = best.global_position + Vector3(0, 1.0, 0)
 	enemies_remaining_in_round -= 1
 	alive_enemies += 1
+
+# Spread arrivals AROUND the player instead of always the farthest single point.
+# Pick the spawn whose direction-from-player is the most ANGULARLY ISOLATED from
+# where the living enemies already are — so the squad fills empty sides and the
+# player gets surrounded, not a single-file line from one direction.
+func _pick_spread_spawn(player_pos: Vector3) -> Node3D:
+	var enemy_dirs: Array[Vector2] = []
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e) or e.get("_dying"):
+			continue
+		var to: Vector3 = (e as Node3D).global_position - player_pos
+		var v := Vector2(to.x, to.z)
+		if v.length() > 0.5:
+			enemy_dirs.append(v.normalized())
+
+	var shuffled := spawn_points.duplicate()
+	shuffled.shuffle()
+	var best: Node3D = shuffled[0]
+	var best_score: float = -INF
+	for p in shuffled:
+		var to: Vector3 = (p as Node3D).global_position - player_pos
+		var flat := Vector2(to.x, to.z)
+		if flat.length() < min_spawn_player_dist:
+			continue
+		var sdir := flat.normalized()
+		# Smallest angular gap to any living enemy's direction (PI = empty side).
+		var score := PI
+		for d in enemy_dirs:
+			score = minf(score, absf(sdir.angle_to(d)))
+		score += randf() * 0.15   # break ties / vary when the field is empty
+		if score > best_score:
+			best_score = score
+			best = p
+	return best
 
 # Weighted type pick: wave-gated availability, weighted toward counters of the
 # player's learned tendencies (visible payoff of the adaptive profiler).

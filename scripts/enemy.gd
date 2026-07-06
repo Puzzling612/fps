@@ -74,6 +74,7 @@ const NO_TARGET := Vector3(1.0e30, 0.0, 0.0)
 var slot_position: Vector3 = NO_TARGET
 var objective_position: Vector3 = NO_TARGET
 var has_objective: bool = false
+var _objective_climb: bool = false
 var role: String = "encircle"   # encircle | flank | objective
 
 # Ladder state (set by ladder.gd via enter/exit_ladder)
@@ -96,12 +97,9 @@ func exit_ladder() -> void:
 @onready var hp_progress: ProgressBar = $HPBar/SubViewport/ProgressBar
 @onready var nav_agent: NavigationAgent3D = $NavAgent
 
-<<<<<<< HEAD
-=======
 var _shot_excl_cache: Array[RID] = []
 var _shot_excl_dirty: bool = true
 
->>>>>>> 22ead17 (optimize: stop per-frame HP-bar viewport renders & redundant billboard)
 var _flash_material: StandardMaterial3D
 var _base_override: StandardMaterial3D = null
 var _model_meshes: Array[MeshInstance3D] = []
@@ -114,6 +112,7 @@ func _ready() -> void:
 	strafe_dir = 1 if randf() < 0.5 else -1
 	strafe_timer = randf_range(strafe_change_interval_min, strafe_change_interval_max)
 	_build_behavior_tree()
+	GameManager.enemy_killed.connect(_on_enemy_killed_invalidate_cache)
 
 	_flash_material = StandardMaterial3D.new()
 	_flash_material.albedo_color = Color(1, 1, 1, 1)
@@ -183,8 +182,10 @@ func _assign_weapon_visual() -> void:
 		_:                  model.set_weapon("rifle")
 
 # ─── Configuration (called by spawner before add_child) ──────
-func configure(w: int, t: int, _d: float) -> void:
-	# _d (DDA difficulty) is intentionally ignored: per-enemy threat is fixed.
+func configure(w: int, t: int, d: float) -> void:
+	# d = DDA difficulty from the director, ∈ [0.75, 1.15]. It scales accuracy
+	# and fire cadence only (applied at the end, after type overrides) — HP and
+	# per-hit damage stay fixed so kill feel / TTK never turns spongy.
 	enemy_type = t
 	max_health = WaveBalance.enemy_hp(w)
 	attack_damage = WaveBalance.enemy_dmg(w)
@@ -224,35 +225,44 @@ func configure(w: int, t: int, _d: float) -> void:
 			# Slow lobbed attack, but each grenade now lands a heavier blast.
 			attack_damage = int(round(attack_damage * 1.8))
 
+	# ── DDA (after type overrides so every type scales) ──
+	# Struggling player (d<1): wider spread, slower shots. Dominating (d>1):
+	# tighter spread, faster cadence. At the clamps this is roughly ±15-30%.
+	d = clampf(d, 0.75, 1.15)
+	aim_spread_deg /= d
+	attack_interval *= (2.0 - d)
+
 # ─── Director API ────────────────────────────────────────────
 func assign_slot(pos: Vector3, new_role: String) -> void:
 	slot_position = pos
 	role = new_role
 
-func assign_objective(pos: Vector3) -> void:
+func assign_objective(pos: Vector3, climb: bool = false, hold_sec: float = 0.0) -> void:
 	objective_position = pos
 	has_objective = true
 	role = "objective"
+	# climb=true → objective is a ladder base; arrival hands off to the ladder
+	# (exit_ladder clears it at the top). climb=false → a ground waypoint (e.g. a
+	# flank-route mouth or a walkable high ground); arrival clears it so the enemy
+	# rejoins combat from the new position.
+	_objective_climb = climb
+	# hold_sec > 0 → after arriving, GUARD the spot for that long (fighting from
+	# there) instead of immediately rejoining the ring. Used for pickup ambushes.
+	_objective_hold_sec = hold_sec
+	hold_position = NO_TARGET
+
+# ── Post-objective guard duty ──
+var hold_position: Vector3 = NO_TARGET
+var _hold_until_ms: float = 0.0
+var _objective_hold_sec: float = 0.0
+
+func is_holding() -> bool:
+	return hold_position.x < 1.0e29
 
 func clear_objective() -> void:
 	has_objective = false
 
 # ─── Process ─────────────────────────────────────────────────
-<<<<<<< HEAD
-func _process(delta: float) -> void:
-	_orient_hp_bar()
-	if hp_progress and _displayed_hp > float(health):
-		_displayed_hp = max(float(health), _displayed_hp - hp_lerp_speed * delta)
-		hp_progress.value = _displayed_hp
-
-func _orient_hp_bar() -> void:
-	if not hp_bar: return
-	var cam = get_viewport().get_camera_3d()
-	if not cam: return
-	var to_cam = cam.global_position - hp_bar.global_position
-	if Vector3(to_cam.x, 0, to_cam.z).length() < 0.001: return
-	hp_bar.look_at(cam.global_position, Vector3.UP)
-=======
 # The HP-bar Sprite3D billboards itself on the GPU (billboard = 1 in the scene),
 # so no per-frame look_at is needed. The SubViewport renders on demand only — we
 # kick a single re-render via _refresh_hp_bar() whenever the value changes, instead
@@ -260,7 +270,6 @@ func _orient_hp_bar() -> void:
 func _refresh_hp_bar() -> void:
 	if hp_subviewport:
 		hp_subviewport.render_target_update_mode = SubViewport.UPDATE_ONCE
->>>>>>> 22ead17 (optimize: stop per-frame HP-bar viewport renders & redundant billboard)
 
 func _physics_process(delta: float) -> void:
 	# Dying: AI is frozen while the death animation plays; only gravity applies.
@@ -309,8 +318,11 @@ func _physics_process(delta: float) -> void:
 	velocity.x = desired.x
 	velocity.z = desired.z
 
-	# Attack — any state except climbing to objective.
-	if state != State.GOTO_OBJECTIVE and attack_cooldown <= 0.0:
+	# Attack — including self-defence while travelling to an objective: an enemy
+	# crossing the map to flank/guard used to be a free kill even at point-blank.
+	# It keeps moving, but shoots back when the player is close.
+	var travelling: bool = state == State.GOTO_OBJECTIVE
+	if attack_cooldown <= 0.0 and (not travelling or distance_p <= 14.0):
 		var same_level: bool = absf(global_position.y - (player as Node3D).global_position.y) < 2.5
 		if distance_p <= melee_range and same_level:
 			# Point-blank → melee. No LOS needed, faster than shooting. (Skipped
@@ -355,10 +367,10 @@ func _physics_process(delta: float) -> void:
 
 # ─── State logic ─────────────────────────────────────────────
 func _get_profile() -> PlayerProfile:
-	if _director == null or not is_instance_valid(_director):
+	if not is_instance_valid(_director):
 		var ds := get_tree().get_nodes_in_group("ai_director")
 		_director = ds[0] if ds.size() > 0 else null
-	if _director and is_instance_valid(_director):
+	if is_instance_valid(_director):
 		return _director.current_profile
 	return null
 
@@ -476,6 +488,23 @@ func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, de
 	# enemies (has_objective / on_ladder) are exempt so they can still reach the top.
 	if global_position.y > 5.0 and not has_objective and not on_ladder:
 		return _perched_strafe(forward_to_player, delta)
+	# Guard duty: stay on post (a contested pickup) and fight from there — strafe
+	# in place, pull back to the post if we drift. Combat/attack logic still runs
+	# normally in this state, so the guard shoots anyone approaching.
+	if hold_position.x < 1.0e29 and not has_objective:
+		if float(Time.get_ticks_msec()) > _hold_until_ms:
+			hold_position = NO_TARGET
+		else:
+			var to_post := hold_position - global_position
+			to_post.y = 0
+			if to_post.length() > 2.5:
+				return _nav_dir(hold_position, move_speed)
+			strafe_timer -= delta
+			if strafe_timer <= 0.0:
+				strafe_dir = -strafe_dir
+				strafe_timer = randf_range(strafe_change_interval_min, strafe_change_interval_max)
+			var hold_right := Vector3(forward_to_player.z, 0, -forward_to_player.x)
+			return hold_right * strafe_speed * float(strafe_dir)
 	match state:
 		State.EVADE:
 			var right := Vector3(forward_to_player.z, 0, -forward_to_player.x)
@@ -483,7 +512,21 @@ func _compute_desired_movement(forward_to_player: Vector3, distance_p: float, de
 		State.GOTO_OBJECTIVE:
 			var to_obj := objective_position - global_position
 			to_obj.y = 0
-			if to_obj.length() < 0.5:
+			# Require matching HEIGHT too, so a walkable high-ground objective (a 2F
+			# loft reached by a ramp) isn't "arrived" while standing on the ground
+			# under it — keep navigating up the ramp until actually at loft height.
+			var at_height: bool = absf(global_position.y - objective_position.y) < 1.5
+			if to_obj.length() < 1.0 and at_height:
+				# Ground waypoint (flank mouth / walkable high ground): arrival done →
+				# drop the objective and fight from here. Ladder objectives keep it so
+				# the climb (and exit_ladder at the top) can finish.
+				if not _objective_climb:
+					if _objective_hold_sec > 0.0:
+						# Guard duty: hold this spot (see hold branch below).
+						hold_position = objective_position
+						_hold_until_ms = float(Time.get_ticks_msec()) + _objective_hold_sec * 1000.0
+						_objective_hold_sec = 0.0
+					clear_objective()
 				return Vector3.ZERO
 			return _nav_dir(objective_position, sprint_speed)
 		State.APPROACH:
@@ -611,7 +654,16 @@ func _direct_dir(dest: Vector3, speed: float) -> Vector3:
 	return d.normalized() * speed
 
 # ─── Movement helpers ────────────────────────────────────────
+# Raycast throttles: re-evaluating these every frame for every enemy is the main
+# per-enemy CPU cost. Caching to a few times per second is imperceptible in play
+# but lets us put many more enemies on screen.
+var _jump_next_ms: float = 0.0
+
 func _should_jump() -> bool:
+	var now := float(Time.get_ticks_msec())
+	if now < _jump_next_ms:
+		return false
+	_jump_next_ms = now + 200.0
 	var forward := -global_transform.basis.z
 	forward.y = 0.0
 	if forward.length() < 0.001: return false
@@ -636,24 +688,35 @@ func _should_jump() -> bool:
 
 # ─── Combat ──────────────────────────────────────────────────
 # RIDs to ignore when shooting / checking sight: ourself plus every other enemy.
-# Friendlies clustered around the player must NOT block fire — otherwise a ranged
-# enemy (marksman) is forever shooting allies in the back and never hits the player.
+# Cached and only rebuilt when the enemy roster changes.
+func _on_enemy_killed_invalidate_cache(_is_headshot: bool) -> void:
+	_shot_excl_dirty = true
+
 func _shot_exclusions() -> Array[RID]:
-	var ex: Array[RID] = [get_rid()]
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e is CollisionObject3D and e != self:
-			ex.append((e as CollisionObject3D).get_rid())
-	return ex
+	if _shot_excl_dirty:
+		_shot_excl_dirty = false
+		_shot_excl_cache = [get_rid()]
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e is CollisionObject3D and e != self:
+				_shot_excl_cache.append((e as CollisionObject3D).get_rid())
+	return _shot_excl_cache
+
+var _los_cache: bool = false
+var _los_next_ms: float = 0.0
 
 func _has_line_of_sight(player: Node) -> bool:
+	var now := float(Time.get_ticks_msec())
+	if now < _los_next_ms:
+		return _los_cache
+	_los_next_ms = now + 150.0
 	var from: Vector3 = global_position + Vector3(0, 1.2, 0)
 	var to: Vector3 = (player as Node3D).global_position + Vector3(0, 0.3, 0)
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(from, to)
 	q.exclude = _shot_exclusions()
 	var r := space.intersect_ray(q)
-	if r.is_empty(): return true
-	return r.collider == player
+	_los_cache = r.is_empty() or r.collider == player
+	return _los_cache
 
 # ─── Shotgun (Rusher) ─────────────────────────────────────────
 # Balance (see chat derivation): 8 pellets, 12 total damage at point-blank,
