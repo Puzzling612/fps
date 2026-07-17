@@ -69,6 +69,7 @@ func _ready() -> void:
 	GameManager.ads_changed.connect(_on_ads_changed)
 	GameManager.player_hit_dir.connect(_on_player_hit_dir)
 	_setup_hit_arrow()
+	_setup_grenade_marker()
 
 func _setup_chroma() -> void:
 	var shader: Shader = load("res://shaders/chroma.gdshader")
@@ -155,11 +156,13 @@ func _setup_hit_arrow() -> void:
 	_hit_arrow.anchor_right = 0.5
 	_hit_arrow.anchor_top = 0.5
 	_hit_arrow.anchor_bottom = 0.5
+	# Big and persistent — the full-screen damage flash must not drown out the
+	# WHERE. (Feedback: "screen just goes red, no sense of direction".)
 	_hit_arrow.text = "▲"
-	_hit_arrow.add_theme_font_size_override("font_size", 46)
-	_hit_arrow.add_theme_color_override("font_color", Color(1, 0.15, 0.15, 1))
+	_hit_arrow.add_theme_font_size_override("font_size", 76)
+	_hit_arrow.add_theme_color_override("font_color", Color(1, 0.12, 0.12, 1))
 	_hit_arrow.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	_hit_arrow.add_theme_constant_override("outline_size", 5)
+	_hit_arrow.add_theme_constant_override("outline_size", 7)
 	_hit_arrow.modulate.a = 0.0
 	add_child(_hit_arrow)
 
@@ -167,11 +170,66 @@ func _on_player_hit_dir(angle: float) -> void:
 	if _hit_arrow == null:
 		return
 	# Place the arrow on a ring around the crosshair, pointing at the source.
-	var r := 120.0
-	_hit_arrow.position = Vector2(sin(angle) * r - 23.0, -cos(angle) * r - 28.0)
+	var r := 170.0
+	_hit_arrow.position = Vector2(sin(angle) * r - 38.0, -cos(angle) * r - 46.0)
 	_hit_arrow.rotation = angle
 	_hit_arrow_a = 1.0
 	_hit_arrow.modulate.a = 1.0
+
+# ── Grenade danger marker ──
+# Standard-FPS grenade indicator: a pulsing ⚠ tracks the nearest live enemy
+# grenade — over it when on screen, on a ring around the crosshair when it's
+# behind you — so a landed grenade is never an invisible instant death.
+var _nade_marker: Label = null
+
+func _setup_grenade_marker() -> void:
+	_nade_marker = Label.new()
+	_nade_marker.text = "⚠"
+	_nade_marker.add_theme_font_size_override("font_size", 56)
+	_nade_marker.add_theme_color_override("font_color", Color(1.0, 0.55, 0.05, 1))
+	_nade_marker.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	_nade_marker.add_theme_constant_override("outline_size", 6)
+	_nade_marker.visible = false
+	_nade_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_nade_marker)
+
+func _update_grenade_marker() -> void:
+	if _nade_marker == null:
+		return
+	var pl = GameManager.player
+	var cam := get_viewport().get_camera_3d()
+	if not is_instance_valid(pl) or cam == null:
+		_nade_marker.visible = false
+		return
+	var best: Node3D = null
+	var bd := 16.0   # only warn about grenades close enough to matter
+	for g in get_tree().get_nodes_in_group("enemy_grenade"):
+		if not is_instance_valid(g):
+			continue
+		var d: float = (g as Node3D).global_position.distance_to(pl.global_position)
+		if d < bd:
+			bd = d
+			best = g
+	if best == null:
+		_nade_marker.visible = false
+		return
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var wp: Vector3 = best.global_position + Vector3(0, 0.4, 0)
+	var pos: Vector2
+	if cam.is_position_behind(wp):
+		# Off-view: point at it from a ring around the crosshair (like hit dir).
+		var to: Vector3 = wp - pl.global_position
+		to.y = 0.0
+		var fwd: Vector3 = -pl.global_transform.basis.z
+		var rgt: Vector3 = pl.global_transform.basis.x
+		var ang := atan2(rgt.dot(to), fwd.dot(to))
+		pos = vp * 0.5 + Vector2(sin(ang) * 150.0, -cos(ang) * 150.0)
+	else:
+		pos = cam.unproject_position(wp)
+		pos = pos.clamp(Vector2(40, 40), vp - Vector2(60, 90))
+	_nade_marker.position = pos - Vector2(26, 34)
+	_nade_marker.modulate.a = 0.55 + 0.45 * absf(sin(float(Time.get_ticks_msec()) * 0.02))
+	_nade_marker.visible = true
 
 # Explosions get punchier screen feedback than a regular bullet hit.
 func _on_player_explosion_hit(_amt: int) -> void:
@@ -183,8 +241,9 @@ func _on_player_explosion_hit(_amt: int) -> void:
 
 func _process(delta: float) -> void:
 	if _hit_arrow and _hit_arrow_a > 0.0:
-		_hit_arrow_a = max(0.0, _hit_arrow_a - delta * 0.8)
+		_hit_arrow_a = max(0.0, _hit_arrow_a - delta * 0.5)
 		_hit_arrow.modulate.a = _hit_arrow_a
+	_update_grenade_marker()
 
 	if _chroma_mat and _chroma_t > 0.0:
 		var real_delta := delta / maxf(Engine.time_scale, 0.001)
@@ -315,7 +374,8 @@ func _on_weapon_fired(_from: Vector3, _to: Vector3, hit_enemy: bool, is_headshot
 		hit_marker.modulate = Color(1, 0.3, 0.3, 1)
 
 func _on_player_damaged(_amount: int) -> void:
-	_vignette_alpha = 0.55
+	# Softer than the old 0.55 so the directional arrow stays readable through it.
+	_vignette_alpha = 0.4
 	var c = damage_vignette.color
 	c.a = _vignette_alpha
 	damage_vignette.color = c

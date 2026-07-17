@@ -314,6 +314,7 @@ func take_damage(amount: int, heavy: bool = false, from_pos: Vector3 = Vector3(I
 	current_health = max(0, current_health - amount)
 	GameManager.player_health_changed.emit(current_health, max_health)
 	GameManager.player_damaged.emit(amount)
+	AudioManager.play_hit()   # audible "you were hit" thud
 	# Tell the HUD which way the hit came from (horizontal angle, 0 = front).
 	if from_pos.x < INF:
 		var to := from_pos - global_position

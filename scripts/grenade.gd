@@ -12,6 +12,12 @@ var fuse: float = 2.0
 var damage: int = 20
 var hits_player: bool = true   # enemy grenades hurt the player; player grenades hurt enemies
 var _armed: bool = false
+var _resting: bool = false     # enemy grenade landed: sitting on the ground, fuse burning
+var _beep_t: float = 0.0
+
+# Enemy grenades must be REACTABLE: they land, sit beeping for at least this
+# long, then blow. (Player grenades keep detonating on ground contact.)
+const REST_MIN_FUSE := 0.9
 
 @onready var mesh: MeshInstance3D = $Mesh
 
@@ -21,18 +27,35 @@ func launch(vel: Vector3, fuse_time: float, dmg: int, hits_player_: bool = true)
 	damage = dmg
 	hits_player = hits_player_
 	_armed = true
+	if hits_player:
+		# HUD danger marker tracks this group.
+		add_to_group("enemy_grenade")
 
 func _physics_process(delta: float) -> void:
 	if not _armed:
 		return
+	fuse -= delta
+
+	# Landed enemy grenade: sit on the spot, beep + pulse until the fuse blows.
+	if _resting:
+		_beep_t -= delta
+		if _beep_t <= 0.0:
+			_beep_t = 0.22
+			AudioManager.play_beep_at(global_position)
+			if mesh:
+				mesh.scale = Vector3.ONE * (1.5 if mesh.scale.x < 1.2 else 1.0)
+		if fuse <= 0.0:
+			_explode()
+		return
+
 	velocity.y -= gravity * delta
 	var motion: Vector3 = velocity * delta
 	var next_pos: Vector3 = global_position + motion
 	rotate_x(velocity.length() * delta * 2.0)
-	fuse -= delta
 
-	# Bounce off walls (vertical static geometry); detonate on the ground or any
-	# near-horizontal surface — no more ground bouncing.
+	# Bounce off walls (vertical static geometry). On the ground / any near-
+	# horizontal surface: PLAYER grenades detonate on impact (unchanged), ENEMY
+	# grenades come to rest and burn their fuse so the player can react/escape.
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(global_position, next_pos)
 	var r := space.intersect_ray(q)
@@ -43,9 +66,11 @@ func _physics_process(delta: float) -> void:
 			global_position = r.position + n * 0.06
 			velocity = (velocity - 2.0 * velocity.dot(n) * n) * wall_bounce_damping
 		else:
-			# Floor / ramp / ceiling hit head-on → explode.
-			global_position = r.position
-			_explode()
+			global_position = r.position + Vector3(0, 0.08, 0)
+			if hits_player:
+				_rest()
+			else:
+				_explode()
 			return
 	else:
 		global_position = next_pos
@@ -53,10 +78,19 @@ func _physics_process(delta: float) -> void:
 	# Safety net for the flat ground plane.
 	if global_position.y <= 0.15:
 		global_position.y = 0.15
-		_explode()
+		if hits_player:
+			_rest()
+		else:
+			_explode()
 		return
 	if fuse <= 0.0:
 		_explode()
+
+func _rest() -> void:
+	_resting = true
+	velocity = Vector3.ZERO
+	fuse = maxf(fuse, REST_MIN_FUSE)
+	AudioManager.play_beep_at(global_position)
 
 func _explode() -> void:
 	_armed = false
@@ -76,6 +110,7 @@ func _explode() -> void:
 			var d: float = global_position.distance_to((e as Node3D).global_position)
 			if d <= blast_radius:
 				e.take_damage(damage, false)
-	# Explosion VFX: flash, fireball, shockwave ring, sparks, smoke.
+	# Explosion VFX + positional boom.
 	FX.explosion(get_tree().current_scene, global_position, blast_radius)
+	AudioManager.play_explosion_at(global_position)
 	queue_free()

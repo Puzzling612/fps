@@ -192,6 +192,7 @@ func configure(w: int, t: int, d: float) -> void:
 	attack_interval = WaveBalance.enemy_interval(w)
 	aim_spread_deg = WaveBalance.enemy_spread(w)
 	headshot_multiplier = WaveBalance.headshot_mult(w)
+	reaction_time = 0.5
 	match t:
 		EnemyType.RUSHER:
 			max_health = int(max_health * 0.6)
@@ -206,6 +207,7 @@ func configure(w: int, t: int, d: float) -> void:
 			# Rushers hit hard in melee — getting hugged is a real panic (40 / 0.8 s
 			# = 50 DPS). Lower toward 30 if Rusher swarms feel unfair.
 			melee_damage = 40
+			reaction_time = 0.3
 		EnemyType.MARKSMAN:
 			max_health = int(max_health * 0.9)
 			move_speed *= 0.9
@@ -215,7 +217,10 @@ func configure(w: int, t: int, d: float) -> void:
 			aggro_radius = 85.0     # marksman exception: engages from much farther
 			attack_damage = int(round(attack_damage * 2.0))
 			attack_interval = maxf(1.6, attack_interval * 2.0)
-			aim_spread_deg = 0.3
+			# 0.3° was a laser — with double damage it read as an instant aimbot.
+			# Wider spread + the longest aim time keeps snipers scary but fair.
+			aim_spread_deg = 0.9
+			reaction_time = 1.1
 		EnemyType.GRENADIER:
 			max_health = int(max_health * 1.0)
 			preferred_distance = 16.0
@@ -224,6 +229,7 @@ func configure(w: int, t: int, d: float) -> void:
 			attack_interval = maxf(2.4, attack_interval * 2.4)
 			# Slow lobbed attack, but each grenade now lands a heavier blast.
 			attack_damage = int(round(attack_damage * 1.8))
+			reaction_time = 0.6
 
 	# ── DDA (after type overrides so every type scales) ──
 	# Struggling player (d<1): wider spread, slower shots. Dominating (d>1):
@@ -318,6 +324,20 @@ func _physics_process(delta: float) -> void:
 	velocity.x = desired.x
 	velocity.z = desired.z
 
+	# Target acquisition: on gaining line-of-sight an enemy takes reaction_time to
+	# AIM before its first shot, and that first shot is a deliberate near-miss
+	# "crack" for rifles/snipers — no more zero-frame laser the instant a
+	# sightline opens. Losing sight for <0.8s doesn't reset the aim.
+	var los: bool = _has_line_of_sight(player)
+	var now_ms := float(Time.get_ticks_msec())
+	if los and not _had_los:
+		if now_ms - _los_lost_ms > 800.0:
+			_aim_ready_ms = now_ms + reaction_time * 1000.0
+			_warn_shot_pending = enemy_type == EnemyType.MARKSMAN or enemy_type == EnemyType.NORMAL
+	elif _had_los and not los:
+		_los_lost_ms = now_ms
+	_had_los = los
+
 	# Attack — including self-defence while travelling to an objective: an enemy
 	# crossing the map to flank/guard used to be a free kill even at point-blank.
 	# It keeps moving, but shoots back when the player is close.
@@ -329,7 +349,7 @@ func _physics_process(delta: float) -> void:
 			# while perched high up, where the player is below, not adjacent.)
 			_melee_attack_player(player)
 			attack_cooldown = melee_interval
-		elif distance_p <= minf(attack_range, aggro_radius) and _has_line_of_sight(player):
+		elif distance_p <= minf(attack_range, aggro_radius) and los and now_ms >= _aim_ready_ms:
 			if enemy_type == EnemyType.GRENADIER:
 				_throw_grenade(player)
 			elif enemy_type == EnemyType.RUSHER:
@@ -353,6 +373,20 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= gravity * delta
 
 	move_and_slide()
+
+	# Watchdog: an enemy that should be moving but hasn't budged for 3s is wedged
+	# on geometry ("frozen AI" reports) — kick it loose: drop tasking, sidestep,
+	# hop. Guards on post and perched shooters are intentionally stationary.
+	if now_ms - _stuck_ms > 3000.0:
+		if not _dying and not is_holding() and global_position.y <= 5.0 \
+				and distance_p > 6.0 and global_position.distance_to(_stuck_anchor) < 0.4:
+			clear_objective()
+			evade_dir = 1 if randf() < 0.5 else -1
+			evade_timer = evade_duration
+			if is_on_floor():
+				velocity.y = jump_velocity
+		_stuck_anchor = global_position
+		_stuck_ms = now_ms
 
 	# Drive body animation from how we're actually moving, split into body-local
 	# forward / sideways so a strafe plays the side-step clip instead of a walk.
@@ -704,6 +738,17 @@ func _shot_exclusions() -> Array[RID]:
 var _los_cache: bool = false
 var _los_next_ms: float = 0.0
 
+# ── Target acquisition (spot → aim → fire) ──
+var reaction_time: float = 0.5        # seconds from spotting to first shot (per type)
+var _had_los: bool = false
+var _los_lost_ms: float = -1.0e9
+var _aim_ready_ms: float = 0.0
+var _warn_shot_pending: bool = false
+
+# ── Stuck watchdog ──
+var _stuck_anchor: Vector3 = Vector3.ZERO
+var _stuck_ms: float = 0.0
+
 func _has_line_of_sight(player: Node) -> bool:
 	var now := float(Time.get_ticks_msec())
 	if now < _los_next_ms:
@@ -765,6 +810,7 @@ func _shoot_shotgun(player: Node) -> void:
 		GameManager.weapon_fired.emit(from, hit_point, false, false)
 	if total_dmg > 0.0 and player.has_method("take_damage"):
 		player.take_damage(int(round(total_dmg)), false, from)
+	AudioManager.play_shot_at(from)
 
 func _shoot_at(player: Node) -> void:
 	var from: Vector3 = global_position + Vector3(0, 1.2, 0)
@@ -772,6 +818,15 @@ func _shoot_at(player: Node) -> void:
 	# (height 1.6 → top is only +0.8), so the old +1.0 target sat ABOVE the
 	# hitbox and tight-spread shooters (marksmen) missed every time.
 	var target: Vector3 = (player as Node3D).global_position + Vector3(0, 0.3, 0)
+	# First shot after (re)acquiring the player: a deliberate near-miss that
+	# cracks past their head — classic FPS warning shot, gives them a beat to
+	# react before accurate fire starts.
+	if _warn_shot_pending:
+		_warn_shot_pending = false
+		var side: Vector3 = Vector3.UP.cross(target - from).normalized()
+		if side.length() < 0.5:
+			side = Vector3.RIGHT
+		target += side * (1.8 if randf() < 0.5 else -1.8) + Vector3.UP * randf_range(0.2, 0.6)
 	var dir: Vector3 = (target - from).normalized()
 	var spread_deg: float = aim_spread_deg
 	# High ground is a genuine advantage: a perched shooter has a stable, commanding
@@ -798,6 +853,7 @@ func _shoot_at(player: Node) -> void:
 			var dmg := int(round(attack_damage * WaveBalance.falloff(from.distance_to(target))))
 			player.take_damage(dmg, false, from)
 	GameManager.weapon_fired.emit(from, hit_point, false, false)
+	AudioManager.play_shot_at(from)
 
 func _melee_attack_player(player: Node) -> void:
 	if player.has_method("take_damage"):
@@ -820,7 +876,7 @@ func _throw_grenade(player: Node) -> void:
 	var vy: float = (to.y + 0.5 * grav * t * t) / t
 	var vxz: Vector3 = (horiz / t) if t > 0.001 else Vector3.ZERO
 	if g.has_method("launch"):
-		g.launch(vxz + Vector3.UP * vy, t + 0.15, attack_damage)
+		g.launch(vxz + Vector3.UP * vy, t + 1.0, attack_damage)
 	GameManager.weapon_fired.emit(from, target, false, false)
 
 func take_damage(amount: int, is_headshot: bool = false) -> void:

@@ -58,6 +58,18 @@ jobs:
       - name: Import project
         run: godot --headless --import || true
 
+      # Gate every deploy on an actual headless run of the game: if any script
+      # fails to parse or errors at runtime, the job fails and Pages/exe stay on
+      # the previous good build.
+      - name: Headless smoke test
+        run: |
+          timeout 90 godot --headless res://scenes/Main.tscn --quit-after 450 2>&1 | tee /tmp/smoke.log || true
+          if grep -aE "SCRIPT ERROR|Parse Error" /tmp/smoke.log; then
+            echo "::error::Script errors during headless smoke test"
+            exit 1
+          fi
+          echo "smoke test clean"
+
       - name: Export Web
         run: |
           set -e
